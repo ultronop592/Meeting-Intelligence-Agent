@@ -1,71 +1,34 @@
-# =============================================================================
-# Meeting Intelligence Agent — .gitignore
-# =============================================================================
-# Files and folders listed here are NEVER pushed to GitHub.
-# The most important one is .env — it contains all your secret API keys.
-# =============================================================================
 
 
-# -----------------------------------------------------------------------------
-# SECRET FILES — never push these, ever
-# -----------------------------------------------------------------------------
+# --- SECRETS — never push these ----------------------------------------------
 .env
 .env.local
 .env.production
 .env.staging
 *.env
 
-# Google service account credentials JSON (contains private key)
+# Google service account credentials (contains private key)
 credentials/
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!tsconfig*.json
+google-credentials.json
 
-
-# -----------------------------------------------------------------------------
-# PYTHON
-# -----------------------------------------------------------------------------
-
-# Byte-compiled / optimised files
+# --- PYTHON ------------------------------------------------------------------
 __pycache__/
 *.py[cod]
-*$py.class
 *.pyc
-
-# Virtual environments
-venv/
 .venv/
+venv/
 env/
-ENV/
-
-# Distribution / packaging
 dist/
 build/
 *.egg-info/
-*.egg
-.eggs/
-
-# pytest cache
 .pytest_cache/
-.cache/
-
-# Coverage reports
+.ruff_cache/
+.mypy_cache/
 htmlcov/
 .coverage
 coverage.xml
 
-# Ruff / linter cache
-.ruff_cache/
-
-# MyPy type checker
-.mypy_cache/
-
-
-# -----------------------------------------------------------------------------
-# UPLOADED AUDIO FILES — never push actual meeting recordings
-# -----------------------------------------------------------------------------
+# --- AUDIO UPLOADS — never push actual meeting recordings --------------------
 uploads/
 /tmp/
 *.mp3
@@ -75,55 +38,22 @@ uploads/
 *.flac
 *.webm
 
-
-# -----------------------------------------------------------------------------
-# NODE / NEXT.JS (frontend)
-# -----------------------------------------------------------------------------
+# --- NODE / NEXT.JS ----------------------------------------------------------
 node_modules/
 .next/
 out/
 .vercel/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-
-# -----------------------------------------------------------------------------
-# OS FILES
-# -----------------------------------------------------------------------------
-
-# macOS
+# --- OS ----------------------------------------------------------------------
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Windows
 Thumbs.db
-Desktop.ini
-
-# Linux
 *~
 
-
-# -----------------------------------------------------------------------------
-# IDE / EDITOR
-# -----------------------------------------------------------------------------
+# --- IDE ---------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
-*.swo
-*.sublime-project
-*.sublime-workspace
 
-
-# -----------------------------------------------------------------------------
-# LOGS
-# -----------------------------------------------------------------------------
+# --- LOGS --------------------------------------------------------------------
 *.log
 logs/
-
-
-# -----------------------------------------------------------------------------
-# DOCKER
-# -----------------------------------------------------------------------------
-.docker/
