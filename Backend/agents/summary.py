@@ -117,10 +117,9 @@ PARTICIPANTS: {participants_text}
 KEY TOPICS: {topics_text}
 """
  
- 
-# ---------------------------------------------------------------------------
+
 # Retry wrapper
-# ---------------------------------------------------------------------------
+
  
 @retry(
     retry=retry_if_exception_type((APIConnectionError, APITimeoutError, RateLimitError)),
@@ -144,9 +143,9 @@ def _call_summary_llm(client: Groq, system_prompt: str, user_message: str) -> st
     return response.choices[0].message.content
  
  
-# ---------------------------------------------------------------------------
+
 # LangGraph Node 3
-# ---------------------------------------------------------------------------
+
  
 @traceable(
     name="generate_summary",
@@ -165,11 +164,12 @@ def generate_summary(state: AgentState) -> dict:
     """
     logger.info("Node 3 — generate_summary")
  
-    # --- Guard ---------------------------------------------------------------
+    # Guard
     if not state.transcript:
         error = "generate_summary: transcript missing — cannot generate summary."
         logger.error(error)
         return {"errors": state.errors + [error]}
+ 
  
     # We can still summarise without extraction — warn but continue
     if not state.extraction:
