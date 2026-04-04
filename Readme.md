@@ -2,6 +2,37 @@
 
 This repository contains a backend-first agentic pipeline for meeting processing.
 
+## Frontend (New)
+
+A production-ready Next.js frontend now exists under `frontend/` with:
+
+- Claude-style workspace UI (sidebar, conversation area, composer, insights panel)
+- Full endpoint integration to discovered backend routes
+- Typed API client (`frontend/lib/api`), hooks, and reusable components
+- Polling for long-running jobs with exponential backoff
+- Route guard/token injection support
+- Tests and build validation
+
+Run frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Quality checks:
+
+```bash
+cd frontend
+npm run lint
+npm run test
+npm run build
+```
+
+Integration details are documented in root `API_INTEGRATION_MAP.md`.
+Architecture notes are documented in root `IMPLEMENTATION_NOTES.md`.
+
 It uses:
 - LangGraph for orchestration
 - Groq (Whisper + Llama) for transcription and extraction/summarization

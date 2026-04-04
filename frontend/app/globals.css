@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fdfcf9;
+  --foreground: #2d2a26;
+  --surface: #ffffff;
+  --border: #e2dacf;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  
+  --color-brand-orange-400: #D97757;
+  --color-brand-orange-500: #C26345;
+  --color-brand-orange-600: #A85437;
+  --color-brand-orange-700: #8F462D;
+
+  --color-brand-charcoal-700: #55504C;
+  --color-brand-charcoal-800: #423E3A;
+  --color-brand-charcoal-900: #292824;
+
+  --color-brand-cream-50:  #FAF9F6;
+  --color-brand-cream-100: #F3F1EA;
+  --color-brand-cream-200: #EAE6DB;
+  --color-brand-cream-300: #D5CFC1;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+button,
+input,
+textarea {
+  font: inherit;
+}

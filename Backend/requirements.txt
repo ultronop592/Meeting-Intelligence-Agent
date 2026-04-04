@@ -19,7 +19,7 @@ python-multipart==0.0.20  # Required for audio file uploads
 # --- Database (Neon Postgres) -------------------------------------------------
 sqlalchemy==2.0.36         # ORM — industry standard
 asyncpg==0.30.0            # Async Postgres driver
-psycopg2-binary==2.9.10    # Sync driver for Alembic migrations
+psycopg2-binary==2.9.11  # Sync driver for Alembic migrations
 alembic==1.14.0            # DB migrations (like Git for schema)
 pgvector==0.3.6            # Vector search in Postgres (for RAG)
 
