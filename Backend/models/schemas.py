@@ -46,7 +46,7 @@ class ActionItem(BaseModel):
     description: str      = Field(..., min_length=5, description="Actionable task starting with a verb.")
     owner:       str      = Field(..., description="Full name of the responsible person.")
     due_date:    str      = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="ISO-8601 date YYYY-MM-DD.")
-    priority:    Priority = Field(default=Priority.MEDIUM)
+    priority:    Priority = Field(default=Priority.medium)
  
     @field_validator("owner")
     @classmethod

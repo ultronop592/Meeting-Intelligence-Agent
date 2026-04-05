@@ -12,7 +12,7 @@ from Backend.core.config import settings
 from Backend.db.models import(
     Base, Meeting, ActionItem, Decision, Participant, NotificationLog
 )
-from Backend.models.schemas  import AgentState, EmbedddingStatus
+from Backend.models.schemas import AgentState, EmbeddingStatus
 
 logger = logging.getLogger(__name__)
  
@@ -25,13 +25,19 @@ logger = logging.getLogger(__name__)
 # pool_size=5    — keep 5 connections open (reuse across requests)
 # max_overflow=10 — allow up to 10 extra connections under load
 # pool_pre_ping=True — test connections before use (handles Neon idle timeouts)
-engine = create_async_engine(
-    settings.database_url,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,
-    echo=not settings.is_production,  # Log SQL queries in development only
-)
+if settings.database_url.startswith("sqlite+"):
+    engine = create_async_engine(
+        settings.database_url,
+        echo=not settings.is_production,
+    )
+else:
+    engine = create_async_engine(
+        settings.database_url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        echo=not settings.is_production,  # Log SQL queries in development only
+    )
  
 # async_sessionmaker creates a factory for DB sessions
 # expire_on_commit=False — keep ORM objects usable after commit (important for async)

@@ -1,7 +1,13 @@
 import uuid 
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column,string , Integer, DateTime, Text, ForeignKey, Enum as SAEnum,
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
 )
 
 from sqlalchemy.orm import DeclarativeBase, relationship
