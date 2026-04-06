@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """
  
     model_config = SettingsConfigDict(
-        env_file="Backend/.env",  # Load from workspace root when running uvicorn from project root
+        env_file=".env",  # Load from Backend/.env when running from the Backend directory
         env_file_encoding="utf-8",
         case_sensitive=False,     # GROQ_API_KEY and groq_api_key both work
         extra="ignore",           # Ignore unknown env vars (don't crash)

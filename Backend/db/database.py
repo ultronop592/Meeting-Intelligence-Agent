@@ -2,19 +2,27 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import(
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-from Backend.core.config import settings
-from Backend.db.models import(
+from core.config import settings
+from db.models import(
     Base, Meeting, ActionItem, Decision, Participant, NotificationLog
 )
-from Backend.models.schemas import AgentState, EmbeddingStatus
+from models.schemas import AgentState, EmbeddingStatus
 
 logger = logging.getLogger(__name__)
+
+
+def _normalized_async_database_url(url: str) -> str:
+    """Translate URL parameters that asyncpg does not accept directly."""
+    if url.startswith("postgresql+asyncpg://") and "sslmode=require" in url:
+        return url.replace("sslmode=require", "ssl=require")
+    return url
  
  
 # =============================================================================
@@ -32,7 +40,7 @@ if settings.database_url.startswith("sqlite+"):
     )
 else:
     engine = create_async_engine(
-        settings.database_url,
+        _normalized_async_database_url(settings.database_url),
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
@@ -61,6 +69,9 @@ async def init_db() -> None:
     This is a convenience for development / first run.
     """
     async with engine.begin() as conn:
+        # Neon/Postgres needs pgvector extension for Vector columns.
+        if settings.database_url.startswith("postgresql+"):
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified / created.")
  

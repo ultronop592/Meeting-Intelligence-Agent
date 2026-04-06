@@ -1,7 +1,7 @@
 import logging
 import sys
 import structlog
-from Backend.core.config import settings
+from core.config import settings
 
 def setup_logging() -> None:
     """

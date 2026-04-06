@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   CalendarClock,
   CheckCircle2,
+  Command,
   MessageSquareDiff,
   Trash2,
 } from "lucide-react";
@@ -18,7 +19,7 @@ import { Sidebar } from "@/components/workspace/sidebar";
 import { DetailsPanel } from "@/components/workspace/details-panel";
 import { Composer } from "@/components/workspace/composer";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -36,6 +37,9 @@ export function MeetingWorkspace() {
     Record<string, string>
   >({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
+  const [quickQuery, setQuickQuery] = useState("");
 
   const {
     data: detail,
@@ -53,6 +57,18 @@ export function MeetingWorkspace() {
 
     return "Meeting intelligence workspace";
   }, [detail?.meeting.title]);
+
+  const filteredMeetings = useMemo(() => {
+    const normalized = quickQuery.trim().toLowerCase();
+    if (!normalized) {
+      return meetings;
+    }
+    return meetings.filter((meeting) => {
+      const title = (meeting.title || "").toLowerCase();
+      const summary = (meeting.short_summary || "").toLowerCase();
+      return title.includes(normalized) || summary.includes(normalized);
+    });
+  }, [meetings, quickQuery]);
 
   const handleUploadAndProcess = async (file: File) => {
     setBusyAction("upload");
@@ -176,8 +192,38 @@ export function MeetingWorkspace() {
     }
   }, [polling.status, refreshMeetings, selectedMeetingId]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsQuickSwitcherOpen(true);
+      }
+      if (event.key === "Escape") {
+        setIsQuickSwitcherOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const InlineError = ({
+    text,
+    onRetry,
+  }: {
+    text: string;
+    onRetry: () => void | Promise<void>;
+  }) => (
+    <div className="mb-3 flex items-center justify-between gap-3 rounded-[12px] border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+      <span>{text}</span>
+      <Button variant="outline" size="sm" onClick={() => void onRetry()}>
+        Retry
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="grid h-screen grid-cols-1 bg-brand-cream-100 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_360px]">
+    <div className={`grid h-screen grid-cols-1 bg-background md:grid-cols-[300px_1fr] ${detailsOpen ? "xl:grid-cols-[300px_1fr_360px]" : "xl:grid-cols-[300px_1fr_76px]"}`}>
       <Sidebar
         meetings={meetings}
         loading={meetingsLoading}
@@ -186,14 +232,14 @@ export function MeetingWorkspace() {
         onNewMeeting={() => setSelectedMeetingId(null)}
       />
 
-      <main className="flex min-h-0 flex-col bg-brand-cream-50">
-        <header className="border-b border-brand-cream-200 bg-brand-cream-50 px-4 py-3 md:px-6">
+      <main className="flex min-h-0 flex-col bg-background">
+        <header className="border-b border-border bg-surface px-4 py-3 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-brand-charcoal-900 md:text-lg">
+              <h2 className="text-base font-semibold text-foreground md:text-lg">
                 {activeTitle}
               </h2>
-              <p className="text-xs text-brand-charcoal-700/60">
+              <p className="text-xs text-text-secondary">
                 Meeting processing, summaries, action tracking, and delivery
                 tools.
               </p>
@@ -204,6 +250,7 @@ export function MeetingWorkspace() {
                 size="sm"
                 disabled={!selectedMeetingId}
                 onClick={() => void triggerSend("email")}
+                aria-label="Send meeting summary by email"
               >
                 <MessageSquareDiff className="mr-1 h-4 w-4" /> Email
               </Button>
@@ -212,6 +259,7 @@ export function MeetingWorkspace() {
                 size="sm"
                 disabled={!selectedMeetingId}
                 onClick={() => void triggerSend("slack")}
+                aria-label="Send meeting summary to Slack"
               >
                 <CheckCircle2 className="mr-1 h-4 w-4" /> Slack
               </Button>
@@ -220,6 +268,7 @@ export function MeetingWorkspace() {
                 size="sm"
                 disabled={!selectedMeetingId}
                 onClick={() => void triggerSend("jira")}
+                aria-label="Create Jira tickets from meeting"
               >
                 Jira
               </Button>
@@ -228,6 +277,7 @@ export function MeetingWorkspace() {
                 size="sm"
                 disabled={!selectedMeetingId}
                 onClick={() => void triggerSend("calendar")}
+                aria-label="Create calendar events from meeting"
               >
                 <CalendarClock className="mr-1 h-4 w-4" /> Calendar
               </Button>
@@ -236,8 +286,17 @@ export function MeetingWorkspace() {
                 size="sm"
                 disabled={!selectedMeetingId}
                 onClick={() => void deleteMeeting()}
+                aria-label="Delete selected meeting"
               >
                 <Trash2 className="mr-1 h-4 w-4" /> Delete
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsQuickSwitcherOpen(true)}
+                aria-label="Open quick switcher"
+              >
+                <Command className="mr-1 h-4 w-4" /> Quick switcher
               </Button>
             </div>
           </div>
@@ -245,26 +304,21 @@ export function MeetingWorkspace() {
 
         <section className="flex-1 overflow-auto px-4 py-5 md:px-6">
           {meetingsError ? (
-            <Card className="mb-4 border-rose-200 bg-rose-50">
-              <CardContent className="text-sm text-rose-700">
-                Could not load meetings: {meetingsError}
-              </CardContent>
-            </Card>
+            <InlineError
+              text={`Could not load meetings: ${meetingsError}`}
+              onRetry={refreshMeetings}
+            />
           ) : null}
 
           {polling.isPolling ? (
-            <Card className="mb-4 rounded-2xl">
-              <CardHeader>
-                <p className="text-sm font-semibold text-brand-charcoal-900">
-                  Processing in progress
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-2 flex items-center gap-2 text-sm text-brand-charcoal-700">
+            <Card className="mb-4">
+              <CardContent className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">Processing in progress</p>
+                <div className="flex items-center gap-2 text-sm text-text-secondary">
                   <Spinner /> Agent nodes are running. This panel auto-updates
                   using polling with exponential backoff.
                 </div>
-                <p className="text-xs text-brand-charcoal-700/60">
+                <p className="text-xs text-text-tertiary">
                   Completed nodes:{" "}
                   {polling.status?.completed_nodes?.join(", ") || "none yet"}
                 </p>
@@ -273,20 +327,16 @@ export function MeetingWorkspace() {
           ) : null}
 
           {polling.error ? (
-            <Card className="mb-4 border-amber-200 bg-amber-50">
-              <CardContent className="text-sm text-amber-700">
-                Polling warning: {polling.error}
-              </CardContent>
-            </Card>
+            <InlineError text={`Polling warning: ${polling.error}`} onRetry={() => refreshDetail()} />
           ) : null}
 
           {!selectedMeetingId ? (
-            <Card className="rounded-2xl border-brand-cream-200 bg-white">
+            <Card>
               <CardContent className="space-y-2 py-8">
-                <p className="text-base font-medium text-brand-charcoal-900">
+                <p className="text-base font-medium text-foreground">
                   Start a new intelligence thread
                 </p>
-                <p className="text-sm leading-6 text-brand-charcoal-700/80">
+                <p className="text-sm leading-6 text-text-secondary">
                   Upload a meeting recording to generate summary, action items,
                   decisions, participants, and downstream notifications.
                 </p>
@@ -295,46 +345,49 @@ export function MeetingWorkspace() {
           ) : null}
 
           {selectedMeetingId && detailLoading ? (
-            <p className="text-sm text-brand-charcoal-700/60">
-              Loading meeting details...
-            </p>
+            <div className="space-y-3" aria-label="Loading meeting details">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-24 animate-pulse rounded-[12px] border border-border bg-surface" />
+              ))}
+            </div>
           ) : null}
           {selectedMeetingId && detailError ? (
-            <p className="text-sm text-rose-600">{detailError}</p>
+            <InlineError
+              text={`Could not load meeting details: ${detailError}`}
+              onRetry={refreshDetail}
+            />
           ) : null}
 
           {detail ? (
             <div className="mx-auto max-w-4xl space-y-4">
-              <div className="rounded-2xl border border-brand-cream-200 bg-white p-4 shadow-sm">
-                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-brand-charcoal-700/60">
+              <div className="rounded-[12px] border border-border bg-surface p-4">
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-tertiary">
                   Assistant
                 </p>
-                <p className="text-sm leading-7 text-brand-charcoal-700">
+                <p className="text-sm leading-7 text-text-secondary">
                   {detail.meeting.detailed_summary}
                 </p>
               </div>
 
-              <Card className="rounded-2xl">
-                <CardHeader>
-                  <p className="text-sm font-semibold text-brand-charcoal-900">
+              <Card>
+                <CardContent className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">
                     Action items
                   </p>
-                </CardHeader>
-                <CardContent className="space-y-2">
                   {detail.action_items.length === 0 ? (
-                    <p className="text-sm text-brand-charcoal-700/60">
+                    <p className="text-sm text-text-secondary">
                       No action items.
                     </p>
                   ) : null}
                   {detail.action_items.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-xl border border-brand-cream-200 bg-brand-cream-50 p-3"
+                      className="rounded-[10px] border border-border bg-surface-2 p-3"
                     >
-                      <p className="text-sm font-medium text-brand-charcoal-900">
+                      <p className="text-sm font-medium text-foreground">
                         {item.description}
                       </p>
-                      <p className="text-xs text-brand-charcoal-700/60">
+                      <p className="text-xs text-text-secondary">
                         Owner: {item.owner} | Due: {item.due_date}
                       </p>
                       <div className="mt-2 flex gap-2">
@@ -382,24 +435,22 @@ export function MeetingWorkspace() {
                 </CardContent>
               </Card>
 
-              <Card className="rounded-2xl">
-                <CardHeader>
-                  <p className="text-sm font-semibold text-brand-charcoal-900">
+              <Card>
+                <CardContent className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">
                     Participants
                   </p>
-                </CardHeader>
-                <CardContent className="space-y-2">
                   {detail.participants.length === 0 ? (
-                    <p className="text-sm text-brand-charcoal-700/60">
+                    <p className="text-sm text-text-secondary">
                       No participants extracted.
                     </p>
                   ) : null}
                   {detail.participants.map((participant) => (
                     <div
                       key={participant.id}
-                      className="rounded-xl border border-brand-cream-200 p-3"
+                      className="rounded-[10px] border border-border bg-surface-2 p-3"
                     >
-                      <p className="text-sm font-medium text-brand-charcoal-900">
+                      <p className="text-sm font-medium text-foreground">
                         {participant.name}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -440,7 +491,54 @@ export function MeetingWorkspace() {
         />
       </main>
 
-      <DetailsPanel detail={detail} />
+      <DetailsPanel
+        detail={detail}
+        isOpen={detailsOpen}
+        onToggle={() => setDetailsOpen((prev) => !prev)}
+      />
+
+      {isQuickSwitcherOpen ? (
+        <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/55 p-4 pt-20" role="dialog" aria-modal="true" aria-label="Quick switcher dialog">
+          <div className="w-full max-w-xl rounded-[12px] border border-border bg-surface p-3">
+            <Input
+              value={quickQuery}
+              onChange={(event) => setQuickQuery(event.target.value)}
+              placeholder="Search meetings..."
+              aria-label="Search meetings"
+              autoFocus
+            />
+            <div className="mt-3 max-h-80 overflow-auto rounded-[10px] border border-border bg-surface-2 p-1">
+              {filteredMeetings.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-text-secondary">No matching meetings.</p>
+              ) : (
+                <ul>
+                  {filteredMeetings.slice(0, 12).map((meeting) => (
+                    <li key={meeting.id}>
+                      <button
+                        type="button"
+                        className="w-full rounded-[10px] px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-3"
+                        onClick={() => {
+                          setSelectedMeetingId(meeting.id);
+                          setIsQuickSwitcherOpen(false);
+                        }}
+                        aria-label={`Open meeting ${meeting.title || "Untitled meeting"}`}
+                      >
+                        <p className="text-sm font-medium text-foreground">{meeting.title || "Untitled meeting"}</p>
+                        <p className="line-clamp-1 text-xs text-text-secondary">{meeting.short_summary}</p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-2 flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setIsQuickSwitcherOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

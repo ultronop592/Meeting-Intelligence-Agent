@@ -7,11 +7,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from Backend.core.config import settings
-from Backend.db.database import AsyncSessionLocal, get_db
-from Backend.db.models import ActionItem as DBActionItem
-from Backend.db.models import Decision, Meeting, NotificationLog, Participant
-from Backend.models.schemas import (
+from core.config import settings
+from db.database import AsyncSessionLocal, get_db
+from db.models import ActionItem as DBActionItem
+from db.models import Decision, Meeting, NotificationLog, Participant
+from models.schemas import (
     ActionItemRow,
     ActionItemStatus,
     DecisionRow,

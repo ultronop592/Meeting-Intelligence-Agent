@@ -8,11 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from Backend.api.routes import router
-from Backend.core.config import settings
-from Backend.core.logging import setup_logging
-from Backend.db.database import init_db
-from Backend.models.schemas import HealthResponse
+from api.routes import router
+from core.config import settings
+from core.logging import setup_logging
+from db.database import init_db
+from models.schemas import HealthResponse
 
 setup_logging()
 logger = logging.getLogger(__name__)
