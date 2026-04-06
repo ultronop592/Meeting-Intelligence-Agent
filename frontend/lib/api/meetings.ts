@@ -12,6 +12,8 @@ import type {
   SendResult,
   UpdateActionItemRequest,
   UploadResponse,
+  AgentQueryRequest,
+  AgentQueryResponse,
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
@@ -95,4 +97,10 @@ export const meetingApi = {
         method: "PATCH",
       }
     ),
+
+  queryAgent: (payload: AgentQueryRequest) =>
+    apiRequest<AgentQueryResponse>("/query", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

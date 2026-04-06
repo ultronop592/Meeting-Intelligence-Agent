@@ -125,3 +125,14 @@ export type SendResult = {
   errors?: string[];
   [key: string]: unknown;
 };
+
+export type AgentQueryRequest = {
+  question: string;
+  meeting_id?: string | null;
+};
+
+export type AgentQueryResponse = {
+  answer: string;
+  sources?: string[];
+  [key: string]: unknown;
+};
