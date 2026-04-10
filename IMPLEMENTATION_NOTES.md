@@ -16,7 +16,6 @@ Structure:
 ## Key Decisions
 
 1. Backend-first API contracts from source code
-- Backend files currently contain syntax inconsistencies, so runtime OpenAPI consumption was not reliable.
 - Endpoint contracts were inferred directly from route decorators and schema models.
 
 2. Centralized API client
@@ -34,10 +33,7 @@ Structure:
 
 4. Async behavior
 - No websocket/SSE routes found.
-- Implemented long-job polling with exponential backoff:
-  - initial interval: 1200ms
-  - bounded retries and max delay
-  - terminal states: completed/completed_with_errors/failed
+- Implemented long-job polling with React Query refetch intervals (2s while processing).
 
 5. Route guards
 - Removed login/middleware guard for now based on latest product direction.
@@ -52,7 +48,7 @@ Structure:
 ## Important Assumptions
 
 - Upload + process flow requires constructing `audio_file_path` expected by backend process endpoint. Since upload response does not include full path, frontend uses `NEXT_PUBLIC_UPLOAD_DIR_HINT` to compose path.
-- Backend import path casing and typing issues may need correction server-side before full runtime integration.
+- Agent chat is now wired to backend `POST /query`.
 
 ## Security Notes
 

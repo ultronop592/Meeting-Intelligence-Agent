@@ -14,6 +14,8 @@ from db.models import Decision, Meeting, NotificationLog, Participant
 from models.schemas import (
     ActionItemRow,
     ActionItemStatus,
+    AgentQueryRequest,
+    AgentQueryResponse,
     DecisionRow,
     MeetingDetailResponse,
     MeetingListItem,
@@ -270,6 +272,68 @@ async def send_jira(meeting_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/meetings/{meeting_id}/send/calendar", tags=["meetings"])
-async def send_calendar(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def send_calendar(
+    meeting_id: str,
+    days_from_now: int = Query(7, ge=1, le=365),
+    db: AsyncSession = Depends(get_db),
+):
     await _log_send(db, meeting_id, "calendar")
-    return {"message": "Calendar dispatch simulated", "sent": 1, "failed": 0}
+    return {
+        "message": f"Calendar dispatch simulated for {days_from_now} day(s) from now",
+        "sent": 1,
+        "failed": 0,
+    }
+
+
+@router.post("/query", response_model=AgentQueryResponse, tags=["agent"])
+async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get_db)):
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
+
+    target_meeting: Meeting | None = None
+    if payload.meeting_id:
+        target_meeting = await db.get(Meeting, payload.meeting_id)
+        if not target_meeting:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    else:
+        target_meeting = (
+            await db.execute(select(Meeting).order_by(Meeting.created_at.desc()).limit(1))
+        ).scalars().first()
+
+    if not target_meeting:
+        return AgentQueryResponse(
+            answer="No meetings are available yet. Upload a recording and process it first.",
+            sources=[],
+        )
+
+    action_items = (
+        await db.execute(
+            select(DBActionItem).where(DBActionItem.meeting_id == target_meeting.id).order_by(DBActionItem.created_at)
+        )
+    ).scalars().all()
+    decisions = (
+        await db.execute(select(Decision).where(Decision.meeting_id == target_meeting.id).order_by(Decision.created_at))
+    ).scalars().all()
+
+    lower_question = question.lower()
+    if "action" in lower_question or "task" in lower_question or "todo" in lower_question:
+        if not action_items:
+            answer = "No action items were extracted for this meeting yet."
+        else:
+            tasks = "; ".join(f"{item.description} (owner: {item.owner})" for item in action_items[:5])
+            answer = f"Here are the key action items: {tasks}."
+    elif "decision" in lower_question:
+        if not decisions:
+            answer = "No explicit decisions were captured for this meeting yet."
+        else:
+            decision_text = "; ".join(dec.description for dec in decisions[:5])
+            answer = f"Captured decisions: {decision_text}."
+    else:
+        answer = (
+            f"Meeting: {target_meeting.title}. "
+            f"Summary: {target_meeting.short_summary}. "
+            f"I found {len(action_items)} action item(s) and {len(decisions)} decision(s)."
+        )
+
+    return AgentQueryResponse(answer=answer, sources=[f"meeting:{target_meeting.id}"])

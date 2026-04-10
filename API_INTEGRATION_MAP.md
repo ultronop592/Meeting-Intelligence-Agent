@@ -10,7 +10,7 @@ This document maps every backend endpoint discovered in the workspace and how th
   - `Backend/models/schemas.py`
 - OpenAPI docs path in code: `/docs`, `/redoc` (only when not production).
 - OpenAPI JSON path expected from FastAPI defaults: `/openapi.json`.
-- Note: backend source currently contains syntax issues, so live OpenAPI generation may fail until backend files are corrected. Mapping below is based on route decorators and schema models.
+- Mapping below is based on route decorators and schema models and matches frontend client usage.
 
 ## Endpoint Contract Table
 
@@ -30,11 +30,12 @@ This document maps every backend endpoint discovered in the workspace and how th
 | `/meetings/{meeting_id}/send/jira` | POST | None | Tool result object (`created`, `failed`, optional `message`) | None found | 404 meeting not found | `meetingApi.sendJira(id)` wired in top actions |
 | `/meetings/{meeting_id}/send/calendar` | POST | Query optional `days_from_now` | Tool result object | None found | 404 meeting not found | `meetingApi.sendCalendar(id, days)` wired in top actions |
 | `/meetings/{meeting_id}/participants/{participant_id}` | PATCH | Query `email` | `ParticipantRow` | None found | 404 participant, 403 ownership mismatch | `meetingApi.updateParticipantEmail(...)` wired in participants section |
+| `/query` | POST | `AgentQueryRequest` (`question`, optional `meeting_id`) | `AgentQueryResponse` (`answer`, `sources`) | None found | 400 empty question, 404 meeting not found | `meetingApi.queryAgent(payload)` wired in `agent-chat` and meeting detail chat |
 
 ## Explicit Integration/Non-Integration Notes
 
 - All discovered route-decorated endpoints are implemented in the frontend API client.
 - No backend websocket/SSE endpoint was discovered.
-- Long-running process updates are implemented via polling with exponential backoff in `frontend/hooks/use-job-polling.ts`.
+- Long-running process updates are implemented via polling in `frontend/lib/hooks/use-job-status.ts`.
 - Transcript retrieval endpoint was not discovered in backend routes; transcript display cannot be wired until such endpoint is added.
 - Auth/session endpoints were not discovered in backend routes; UI route guards are deferred and can be enabled later.

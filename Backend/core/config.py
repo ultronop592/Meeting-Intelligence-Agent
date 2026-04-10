@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     upstash_redis_rest_token: str = ""
  
     # --- File upload ---------------------------------------------------------
-    max_upload_size_mb: int = 25
+    max_upload_size_mb: int = 100
     upload_dir:         str = "/tmp/meeting-agent-uploads"
  
     # --- Computed properties -------------------------------------------------

@@ -6,6 +6,9 @@
 .env.production
 .env.staging
 *.env
+*.env.*
+Backend/.env
+frontend/.env.local
 
 # Google service account credentials (contains private key)
 credentials/
@@ -27,6 +30,12 @@ build/
 htmlcov/
 .coverage
 coverage.xml
+.tox/
+.nox/
+pip-wheel-metadata/
+*.sqlite3
+*.db
+.python-version
 
 # --- AUDIO UPLOADS — never push actual meeting recordings --------------------
 uploads/
@@ -43,6 +52,8 @@ node_modules/
 .next/
 out/
 .vercel/
+frontend/coverage/
+frontend/.turbo/
 
 # --- OS ----------------------------------------------------------------------
 .DS_Store

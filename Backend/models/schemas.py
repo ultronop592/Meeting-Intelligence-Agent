@@ -248,3 +248,15 @@ class HealthResponse(BaseModel):
     status:   str = "ok"
     version:  str = "2.0.0"
     database: str = "neon"
+
+
+class AgentQueryRequest(BaseModel):
+    """POST /query"""
+    question: str = Field(..., min_length=1)
+    meeting_id: Optional[str] = None
+
+
+class AgentQueryResponse(BaseModel):
+    """Response from POST /query"""
+    answer: str
+    sources: list[str] = Field(default_factory=list)
