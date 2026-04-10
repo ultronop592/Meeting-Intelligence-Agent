@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".webm"}
+UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 _job_status: dict[str, dict] = {}
 
 
@@ -42,18 +43,35 @@ async def upload_audio(file: UploadFile = File(...)):
             detail=f"Unsupported file type: {suffix}",
         )
 
-    content = await file.read()
-    size_bytes = len(content)
-    if size_bytes == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
-    if size_bytes > settings.max_upload_size_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file exceeds max size")
-
     os.makedirs(settings.upload_dir, exist_ok=True)
     unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
     file_path = os.path.join(settings.upload_dir, unique_name)
-    with open(file_path, "wb") as out:
-        out.write(content)
+
+    size_bytes = 0
+    try:
+        # Stream upload chunks to disk to avoid loading large files into memory.
+        with open(file_path, "wb") as out:
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_SIZE_BYTES)
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_bytes > settings.max_upload_size_bytes:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file exceeds max size")
+                out.write(chunk)
+
+        if size_bytes == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+    except HTTPException:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+    except OSError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to store uploaded file: {exc}")
+    finally:
+        await file.close()
 
     return {
         "filename": file.filename,

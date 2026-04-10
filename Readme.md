@@ -35,7 +35,7 @@ GROQ_API_KEY=your-key
 DATABASE_URL=postgresql+asyncpg://user:pass@host/db?sslmode=require
 DATABASE_URL_SYNC=postgresql+psycopg2://user:pass@host/db?sslmode=require
 
-MAX_UPLOAD_SIZE_MB=100
+MAX_UPLOAD_SIZE_MB=1024
 UPLOAD_DIR=/tmp/meeting-agent-uploads
 ```
 
