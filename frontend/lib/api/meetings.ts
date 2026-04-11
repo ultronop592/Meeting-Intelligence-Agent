@@ -17,6 +17,84 @@ import type {
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return localStorage.getItem("mia_token");
+}
+
+async function uploadAudioWithProgress(
+  file: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<UploadResponse> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const form = new FormData();
+    form.append("file", file);
+
+    xhr.open("POST", `${API_BASE_URL}/meeting/upload`);
+    xhr.withCredentials = true;
+
+    const token = getAuthToken();
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return;
+      const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      onProgress(percent);
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException("Upload aborted", "AbortError"));
+        return;
+      }
+
+      signal.addEventListener(
+        "abort",
+        () => {
+          xhr.abort();
+          reject(new DOMException("Upload aborted", "AbortError"));
+        },
+        { once: true }
+      );
+    }
+
+    xhr.onerror = () => reject(new Error("Upload failed due to network error."));
+    xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+
+    xhr.onload = () => {
+      const raw = xhr.responseText || "";
+      let payload: unknown;
+
+      try {
+        payload = raw ? (JSON.parse(raw) as unknown) : undefined;
+      } catch {
+        payload = undefined;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload as UploadResponse);
+        return;
+      }
+
+      const detail =
+        typeof payload === "object" && payload !== null && "detail" in payload
+          ? String((payload as { detail?: string }).detail || "")
+          : "";
+      reject(new Error(detail || `Upload failed (${xhr.status})`));
+    };
+
+    xhr.send(form);
+  });
+}
+
 const processMeetingSchema = z.object({
   audio_file_path: z.string().min(1),
   audio_filename: z.string().min(1),
@@ -29,15 +107,11 @@ const updateActionItemSchema = z.object({
 export const meetingApi = {
   health: () => apiRequest<HealthResponse>("/health"),
 
-  uploadAudio: async (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-
-    return apiRequest<UploadResponse>("/meeting/upload", {
-      method: "POST",
-      body: form,
-    });
-  },
+  uploadAudio: (
+    file: File,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal
+  ) => uploadAudioWithProgress(file, onProgress, signal),
 
   processMeeting: (payload: ProcessMeetingRequest) => {
     processMeetingSchema.parse(payload);

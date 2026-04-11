@@ -47,12 +47,12 @@ export default function DashboardPage() {
   }, [data]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-app-6">
       <div>
         <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">
           Overview
         </p>
-        <h2 className="mt-2 text-2xl font-semibold text-foreground">
+        <h2 className="heading-title mt-2 text-foreground">
           Your meeting intelligence hub
         </h2>
       </div>
@@ -76,8 +76,8 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold text-foreground">Automation tools</h3>
-        <p className="mt-1 text-sm text-text-secondary">
+        <h3 className="heading-title text-foreground">Automation tools</h3>
+        <p className="mt-1 text-body-md text-text-secondary">
           Built-in backend tools available in this workspace.
         </p>
       </div>
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-foreground">Recent meetings</h3>
+        <h3 className="heading-title text-foreground">Recent meetings</h3>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           Refresh
         </Button>

@@ -35,7 +35,7 @@ export default function AgentChatPage() {
     <div className="mx-auto flex min-h-[70vh] max-w-4xl flex-col rounded-[20px] border border-border bg-surface p-5">
       <div className="border-b border-border pb-3">
         <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Agent Chat</p>
-        <h2 className="mt-2 text-xl font-semibold text-foreground">Talk to the intelligence layer</h2>
+        <h2 className="heading-title mt-2 text-foreground">Talk to the intelligence layer</h2>
       </div>
 
       <div className="flex-1 space-y-4 overflow-auto py-6">

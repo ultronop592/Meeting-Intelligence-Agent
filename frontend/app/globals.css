@@ -12,10 +12,23 @@
   --color-text-secondary: #4f4f4f;
   --color-text-tertiary: #7a7a7a;
   --color-danger: #c2410c;
+
+  --text-display-lg: 2rem;
+  --text-title-lg: 1.5rem;
+  --text-body-md: 0.9375rem;
+
+  --spacing-app-2: 0.5rem;
+  --spacing-app-3: 0.75rem;
+  --spacing-app-4: 1rem;
+  --spacing-app-6: 1.5rem;
+  --spacing-app-8: 2rem;
 }
 
 :root {
   color-scheme: light;
+  --app-content-max: 1280px;
+  --app-shell-x: 1rem;
+  --app-shell-y: 1.5rem;
 }
 
 * {
@@ -37,9 +50,44 @@ body {
     font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
     @apply min-h-screen antialiased;
   }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
 }
 
 @layer utilities {
+  .app-shell {
+    margin: 0 auto;
+    width: 100%;
+    max-width: var(--app-content-max);
+    padding-inline: var(--app-shell-x);
+    padding-block: var(--app-shell-y);
+  }
+
+  .heading-display {
+    font-size: var(--text-display-lg);
+    line-height: 1.15;
+    font-weight: 650;
+  }
+
+  .heading-title {
+    font-size: var(--text-title-lg);
+    line-height: 1.2;
+    font-weight: 600;
+  }
+
+  .text-body-md {
+    font-size: var(--text-body-md);
+    line-height: 1.55;
+  }
+
+  .space-y-app-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: var(--spacing-app-6);
+  }
+
   .glass-panel {
     background: color-mix(in oklab, var(--color-surface) 92%, transparent);
     border: 1px solid var(--color-border);

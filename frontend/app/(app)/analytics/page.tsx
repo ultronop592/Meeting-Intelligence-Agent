@@ -28,10 +28,10 @@ export default function AnalyticsPage() {
   }, [data]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-app-6">
       <div>
         <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Analytics</p>
-        <h2 className="mt-2 text-2xl font-semibold text-foreground">Meeting performance</h2>
+        <h2 className="heading-title mt-2 text-foreground">Meeting performance</h2>
       </div>
 
       {error ? (

@@ -4,38 +4,97 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toUserErrorMessage } from "@/lib/api/client";
 
 type UploadDropzoneProps = {
-  onUpload: (file: File) => Promise<void>;
+  onUpload: (
+    file: File,
+    onProgress: (percent: number) => void,
+    signal?: AbortSignal
+  ) => Promise<unknown>;
   disabled?: boolean;
+  maxSizeMb?: number;
 };
 
-export function UploadDropzone({ onUpload, disabled }: UploadDropzoneProps) {
+const ACCEPTED_EXTENSIONS = [".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".webm"];
+
+export function UploadDropzone({
+  onUpload,
+  disabled,
+  maxSizeMb = 1024,
+}: UploadDropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [selectedFileSizeMb, setSelectedFileSizeMb] = useState<number | null>(null);
+  const [isCancelled, setIsCancelled] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const isBusy = progress > 0 && progress < 100;
+  const maxBytes = maxSizeMb * 1024 * 1024;
 
   const progressLabel = useMemo(() => {
     if (progress === 100) return "Complete";
     if (progress > 0) return `Uploading ${progress}%`;
+    if (disabled) return "Upload in progress";
     return "Upload meeting audio";
-  }, [progress]);
+  }, [progress, disabled]);
+
+  const validateFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    const isSupported = ACCEPTED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+    if (!isSupported) {
+      return "Unsupported file type. Please upload a supported audio format.";
+    }
+
+    if (file.size > maxBytes) {
+      return `File is too large. Maximum allowed size is ${maxSizeMb} MB (1 GB).`;
+    }
+
+    return null;
+  };
 
   const triggerUpload = async (file: File) => {
     if (disabled || isBusy) return;
-    setProgress(12);
-    const timer = window.setInterval(() => {
-      setProgress((prev) => (prev < 88 ? prev + 6 : prev));
-    }, 280);
+
+    const validationError = validateFile(file);
+    if (validationError) {
+      setErrorText(validationError);
+      return;
+    }
+
+    setErrorText(null);
+    setIsCancelled(false);
+    setSelectedFileName(file.name);
+    setSelectedFileSizeMb(Number((file.size / (1024 * 1024)).toFixed(2)));
+    setProgress(0);
+    abortRef.current = new AbortController();
+
     try {
-      await onUpload(file);
+      await onUpload(
+        file,
+        (percent) => setProgress(percent),
+        abortRef.current.signal
+      );
       setProgress(100);
       window.setTimeout(() => setProgress(0), 900);
+    } catch (error) {
+      setProgress(0);
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setIsCancelled(true);
+        setErrorText("Upload canceled.");
+      } else {
+        setErrorText(toUserErrorMessage(error));
+      }
     } finally {
-      window.clearInterval(timer);
+      abortRef.current = null;
     }
+  };
+
+  const cancelUpload = () => {
+    abortRef.current?.abort();
   };
 
   const onSelectFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,9 +135,22 @@ export function UploadDropzone({ onUpload, disabled }: UploadDropzoneProps) {
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">{progressLabel}</p>
-          <p className="text-xs text-text-tertiary">Drop .mp3, .wav, .m4a, .ogg, or click to browse.</p>
+          <p className="text-xs text-text-tertiary">
+            Supported: MP3, WAV, M4A, FLAC, AAC, OGG, WEBM.
+          </p>
         </div>
       </div>
+
+      <p className="rounded-[10px] border border-border bg-surface px-3 py-2 text-xs text-text-secondary">
+        Upload limit: up to 1 GB per recording.
+      </p>
+
+      {selectedFileName ? (
+        <p className="text-xs text-text-tertiary">
+          Selected: <span className="font-medium text-foreground">{selectedFileName}</span>
+          {selectedFileSizeMb !== null ? ` (${selectedFileSizeMb} MB)` : ""}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="h-2 flex-1 rounded-full bg-surface">
@@ -95,7 +167,28 @@ export function UploadDropzone({ onUpload, disabled }: UploadDropzoneProps) {
         >
           Choose file
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!isBusy}
+          onClick={cancelUpload}
+        >
+          Cancel upload
+        </Button>
       </div>
+
+      {errorText ? (
+        <p
+          className={cn(
+            "rounded-[10px] border px-3 py-2 text-xs",
+            isCancelled
+              ? "border-border bg-surface text-text-secondary"
+              : "border-danger/40 bg-danger/10 text-danger"
+          )}
+        >
+          {errorText}
+        </p>
+      ) : null}
 
       <input
         ref={inputRef}
