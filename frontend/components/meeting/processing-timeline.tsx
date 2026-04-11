@@ -2,11 +2,30 @@ import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
 import type { JobStatus } from "@/types/api";
 import { cn } from "@/lib/utils";
 
+type NodeTiming = {
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+};
+
 type ProcessingTimelineProps = {
   status?: JobStatus;
   completedNodes?: string[];
   errors?: string[];
+  elapsedMs?: number | null;
+  lastDurationMs?: number | null;
+  nodeTimings?: Record<string, NodeTiming>;
 };
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+  }
+  return `${seconds}s`;
+}
 
 type TimelineNode = {
   key: string;
@@ -63,6 +82,9 @@ export function ProcessingTimeline({
   status,
   completedNodes,
   errors,
+  elapsedMs,
+  lastDurationMs,
+  nodeTimings,
 }: ProcessingTimelineProps) {
   const done = completedNodes ?? [];
   const isLive = status === "processing";
@@ -76,9 +98,24 @@ export function ProcessingTimeline({
         </span>
       </div>
 
+      {isLive && elapsedMs !== null ? (
+        <p className="mt-2 text-xs text-text-secondary">
+          Elapsed: <span className="font-medium text-foreground">{formatDuration(elapsedMs)}</span>
+        </p>
+      ) : null}
+
+      {!isLive && lastDurationMs !== null ? (
+        <p className="mt-2 text-xs text-text-secondary">
+          Last completion time: <span className="font-medium text-foreground">{formatDuration(lastDurationMs)}</span>
+        </p>
+      ) : null}
+
       <div className="mt-4 space-y-3">
         {timelineNodes.map((node) => {
           const state = getNodeState(node, status, done);
+          const timing = node.aliases
+            .map((alias) => nodeTimings?.[alias])
+            .find((entry) => Boolean(entry));
 
           return (
             <div key={node.key} className="flex items-start gap-3">
@@ -94,7 +131,7 @@ export function ProcessingTimeline({
                 )}
               </div>
 
-              <div>
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                 <p
                   className={cn(
                     "text-sm",
@@ -106,6 +143,11 @@ export function ProcessingTimeline({
                 >
                   {node.label}
                 </p>
+                {timing?.duration_ms !== null && timing?.duration_ms !== undefined ? (
+                  <span className="shrink-0 text-xs text-text-tertiary">
+                    {formatDuration(timing.duration_ms)}
+                  </span>
+                ) : null}
               </div>
             </div>
           );

@@ -16,7 +16,17 @@ type UploadDropzoneProps = {
   maxSizeMb?: number;
 };
 
-const ACCEPTED_EXTENSIONS = [".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".webm"];
+const ACCEPTED_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".m4a",
+  ".flac",
+  ".aac",
+  ".ogg",
+  ".webm",
+  ".mp4",
+  ".mp.4",
+];
 
 export function UploadDropzone({
   onUpload,
@@ -136,7 +146,7 @@ export function UploadDropzone({
         <div>
           <p className="text-sm font-semibold text-foreground">{progressLabel}</p>
           <p className="text-xs text-text-tertiary">
-            Supported: MP3, WAV, M4A, FLAC, AAC, OGG, WEBM.
+            Supported: MP3, WAV, M4A, FLAC, AAC, OGG, WEBM, MP4.
           </p>
         </div>
       </div>
@@ -193,7 +203,7 @@ export function UploadDropzone({
       <input
         ref={inputRef}
         type="file"
-        accept=".mp3,.wav,.m4a,.flac,.aac,.ogg,.webm"
+        accept=".mp3,.wav,.m4a,.flac,.aac,.ogg,.webm,.mp4,.mp.4"
         className="hidden"
         onChange={onSelectFile}
       />

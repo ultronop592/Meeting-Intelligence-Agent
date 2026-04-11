@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMeetingDetail } from "@/lib/hooks/use-meeting-detail";
 import { useAgentChat } from "@/lib/hooks/use-agent-chat";
+import { meetingApi } from "@/lib/api/meetings";
+import { toUserErrorMessage } from "@/lib/api/client";
 import { ChatBubble } from "@/components/chat/chat-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +15,14 @@ import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 
 export default function MeetingDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const meetingId = typeof params?.id === "string" ? params.id : null;
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
   const chatMutation = useAgentChat();
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => meetingApi.deleteMeeting(id),
+  });
   const [message, setMessage] = useState("");
   const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string }[]>(
     []
@@ -39,6 +47,24 @@ export default function MeetingDetailPage() {
     }
   };
 
+  const deleteMeeting = async () => {
+    if (!meetingId || deleteMutation.isPending) return;
+
+    const confirmed = window.confirm(
+      "Delete this meeting permanently? This will remove summary, action items, decisions, and related records."
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteMutation.mutateAsync(meetingId);
+      toast.success("Meeting deleted successfully.");
+      await queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      router.push("/meetings");
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[2.2fr_1fr]">
       <div className="space-y-4">
@@ -48,9 +74,19 @@ export default function MeetingDetailPage() {
               <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Meeting</p>
               <h2 className="mt-2 text-xl font-semibold text-foreground">{title}</h2>
             </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                Refresh
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={!meetingId || deleteMutation.isPending}
+                onClick={() => void deleteMeeting()}
+              >
+                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
           </div>
           {error ? (
             <p className="mt-3 text-sm text-danger">Unable to load meeting details.</p>

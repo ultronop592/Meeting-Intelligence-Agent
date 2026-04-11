@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # // constants
 
 WHISPER_MODEL       = "whisper-large-v3"
-SUPPORTED_FORMATS   = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm"}
+SUPPORTED_FORMATS   = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".mp4"}
 MAX_FILE_SIZE_BYTES = settings.max_upload_size_bytes
 
 @retry(
@@ -57,7 +57,8 @@ def _validate_audio_file(file_path: str) -> Path:
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
     
-    suffix =  path.suffix.lower()
+    lower_name = path.name.lower()
+    suffix = ".mp4" if lower_name.endswith(".mp.4") else path.suffix.lower()
     if suffix not in SUPPORTED_FORMATS:
         raise ValueError(f"Unsupported file format: {suffix}. Supported formats: {SUPPORTED_FORMATS}")
     

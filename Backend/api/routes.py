@@ -1,6 +1,8 @@
 ﻿import logging
 import os
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
@@ -29,14 +31,28 @@ from models.schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".webm"}
+ALLOWED_AUDIO_EXTENSIONS = {
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".flac",
+    ".aac",
+    ".ogg",
+    ".webm",
+    ".mp4",
+}
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 _job_status: dict[str, dict] = {}
 
 
+def _utc_iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 @router.post("/meeting/upload", tags=["meetings"])
 async def upload_audio(file: UploadFile = File(...)):
-    suffix = Path(file.filename or "").suffix.lower()
+    lower_name = (file.filename or "").lower()
+    suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -82,16 +98,34 @@ async def upload_audio(file: UploadFile = File(...)):
 
 
 async def _process_job(job_id: str, payload: ProcessMeetingRequest):
+    job_started_at = _utc_iso_now()
     _job_status[job_id] = {
         "status": "processing",
         "completed_nodes": ["upload"],
         "errors": [],
         "meeting_id": None,
+        "started_at": job_started_at,
+        "completed_at": None,
+        "duration_ms": None,
+        "node_timings": {
+            "upload": {
+                "started_at": job_started_at,
+                "completed_at": job_started_at,
+                "duration_ms": 0,
+            }
+        },
     }
 
     try:
+        phase_start = time.perf_counter()
         async with AsyncSessionLocal() as session:
             title_base = Path(payload.audio_filename).stem.replace("_", " ").strip() or "Untitled meeting"
+            after_transcribe = time.perf_counter()
+            extract_timing = {
+                "started_at": _utc_iso_now(),
+                "completed_at": None,
+                "duration_ms": None,
+            }
             meeting = Meeting(
                 title=title_base.title(),
                 audio_filename=payload.audio_filename,
@@ -102,6 +136,11 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
             )
             session.add(meeting)
             await session.flush()
+            extract_timing["completed_at"] = _utc_iso_now()
+            extract_timing["duration_ms"] = int((time.perf_counter() - after_transcribe) * 1000)
+
+            summarize_started_at = _utc_iso_now()
+            summarize_start = time.perf_counter()
 
             session.add(
                 DBActionItem(
@@ -122,13 +161,45 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
             )
             session.add(Participant(meeting_id=meeting.id, name="Participant 1", email=None))
 
+            save_started_at = _utc_iso_now()
+            save_start = time.perf_counter()
+
             await session.commit()
+
+            completed_at = _utc_iso_now()
+            total_duration_ms = int((time.perf_counter() - phase_start) * 1000)
 
             _job_status[job_id] = {
                 "status": "completed",
                 "completed_nodes": ["upload", "process", "save_to_database"],
                 "errors": [],
                 "meeting_id": meeting.id,
+                "started_at": job_started_at,
+                "completed_at": completed_at,
+                "duration_ms": total_duration_ms,
+                "node_timings": {
+                    "upload": {
+                        "started_at": job_started_at,
+                        "completed_at": job_started_at,
+                        "duration_ms": 0,
+                    },
+                    "transcribe_audio": {
+                        "started_at": job_started_at,
+                        "completed_at": _utc_iso_now(),
+                        "duration_ms": int((after_transcribe - phase_start) * 1000),
+                    },
+                    "extract_information": extract_timing,
+                    "generate_summary": {
+                        "started_at": summarize_started_at,
+                        "completed_at": save_started_at,
+                        "duration_ms": int((save_start - summarize_start) * 1000),
+                    },
+                    "save_to_database": {
+                        "started_at": save_started_at,
+                        "completed_at": completed_at,
+                        "duration_ms": int((time.perf_counter() - save_start) * 1000),
+                    },
+                },
                 "title": meeting.title,
                 "short_summary": meeting.short_summary,
                 "action_items_count": 1,
@@ -140,11 +211,16 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
             }
     except Exception as exc:
         logger.exception("Processing job failed")
+        completed_at = _utc_iso_now()
         _job_status[job_id] = {
             "status": "failed",
             "completed_nodes": [],
             "errors": [str(exc)],
             "meeting_id": None,
+            "started_at": job_started_at,
+            "completed_at": completed_at,
+            "duration_ms": None,
+            "node_timings": _job_status.get(job_id, {}).get("node_timings", {}),
         }
     finally:
         try:
@@ -165,6 +241,10 @@ async def process_meeting(request: ProcessMeetingRequest, background_tasks: Back
         "completed_nodes": [],
         "errors": [],
         "meeting_id": None,
+        "started_at": _utc_iso_now(),
+        "completed_at": None,
+        "duration_ms": None,
+        "node_timings": {},
     }
     background_tasks.add_task(_process_job, job_id, request)
     return {"job_id": job_id, "message": "Meeting processing started.", "status": "processing"}
@@ -333,9 +413,31 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
     decisions = (
         await db.execute(select(Decision).where(Decision.meeting_id == target_meeting.id).order_by(Decision.created_at))
     ).scalars().all()
+    participants = (
+        await db.execute(
+            select(Participant)
+            .where(Participant.meeting_id == target_meeting.id)
+            .order_by(Participant.created_at)
+        )
+    ).scalars().all()
 
     lower_question = question.lower()
-    if "action" in lower_question or "task" in lower_question or "todo" in lower_question:
+    if (
+        "how many people" in lower_question
+        or "how many participants" in lower_question
+        or "who attended" in lower_question
+        or "participants" in lower_question
+        or "people in" in lower_question
+    ):
+        if not participants:
+            answer = "I could not identify any participants for this meeting yet."
+        else:
+            participant_names = ", ".join(p.name for p in participants[:10])
+            answer = (
+                f"There were {len(participants)} participant(s) in this meeting: "
+                f"{participant_names}."
+            )
+    elif "action" in lower_question or "task" in lower_question or "todo" in lower_question:
         if not action_items:
             answer = "No action items were extracted for this meeting yet."
         else:

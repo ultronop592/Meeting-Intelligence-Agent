@@ -32,11 +32,21 @@ export type ProcessMeetingStartResponse = {
 
 export type JobStatus = "processing" | "completed" | "completed_with_errors" | "failed";
 
+export type NodeTiming = {
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+};
+
 export type MeetingProcessingStatusResponse = {
   status: JobStatus;
   completed_nodes: string[];
   errors: string[];
   meeting_id: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  node_timings?: Record<string, NodeTiming>;
   title?: string | null;
   short_summary?: string | null;
   action_items_count?: number;

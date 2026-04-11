@@ -15,25 +15,54 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { toUserErrorMessage } from "@/lib/api/client";
 
+type JobTimerMeta = {
+  jobId: string | null;
+  startedAt: number | null;
+  lastDurationMs: number | null;
+};
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+  }
+  return `${seconds}s`;
+}
+
 export default function MeetingsPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useMeetings();
   const uploadMutation = useUploadMeeting();
-  const activeJobIdQuery = useQuery<string | null>({
-    queryKey: ["active-job-id"],
-    queryFn: async () => null,
-    initialData: null,
+  const activeJobMetaQuery = useQuery<JobTimerMeta>({
+    queryKey: ["active-job-meta"],
+    queryFn: async () => ({ jobId: null, startedAt: null, lastDurationMs: null }),
+    initialData: { jobId: null, startedAt: null, lastDurationMs: null },
     enabled: false,
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const jobStatus = useJobStatus(activeJobIdQuery.data ?? null);
+  const jobStatus = useJobStatus(activeJobMetaQuery.data.jobId);
+  const [timerTick, setTimerTick] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "actionable">("all");
 
   useEffect(() => {
+    if (jobStatus.data?.status !== "processing") return;
+    const id = window.setInterval(() => {
+      setTimerTick((value) => value + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [jobStatus.data?.status]);
+
+  useEffect(() => {
     if (uploadMutation.isSuccess) {
-      queryClient.setQueryData(["active-job-id"], uploadMutation.data.job_id);
+      queryClient.setQueryData<JobTimerMeta>(["active-job-meta"], (prev) => ({
+        jobId: uploadMutation.data.job_id,
+        startedAt: Date.now(),
+        lastDurationMs: prev?.lastDurationMs ?? null,
+      }));
       toast.success("Upload complete. Processing started.");
     }
     if (uploadMutation.isError) {
@@ -43,6 +72,9 @@ export default function MeetingsPage() {
 
   useEffect(() => {
     if (!jobStatus.data) return;
+
+    const startedAt = activeJobMetaQuery.data.startedAt;
+    const durationMs = startedAt ? Date.now() - startedAt : null;
 
     if (jobStatus.data.status === "processing") return;
 
@@ -55,9 +87,19 @@ export default function MeetingsPage() {
       toast.error(reason);
     }
 
-    queryClient.setQueryData(["active-job-id"], null);
+    queryClient.setQueryData<JobTimerMeta>(["active-job-meta"], (prev) => ({
+      jobId: null,
+      startedAt: null,
+      lastDurationMs: durationMs ?? prev?.lastDurationMs ?? null,
+    }));
     void queryClient.invalidateQueries({ queryKey: ["meetings"] });
-  }, [jobStatus.data, queryClient]);
+  }, [jobStatus.data, activeJobMetaQuery.data.startedAt, queryClient]);
+
+  const elapsedMs = useMemo(() => {
+    const startedAt = activeJobMetaQuery.data.startedAt;
+    if (!startedAt || jobStatus.data?.status !== "processing") return null;
+    return Date.now() - startedAt;
+  }, [activeJobMetaQuery.data.startedAt, jobStatus.data?.status, timerTick]);
 
   const filtered = useMemo(() => {
     const meetings = data ?? [];
@@ -88,7 +130,7 @@ export default function MeetingsPage() {
 
   const pipelineMessage =
     jobStatus.data?.status === "processing"
-      ? "AI agents are processing transcript, extraction, and summary nodes."
+      ? `AI agents are processing transcript, extraction, and summary nodes. Elapsed: ${formatDuration(elapsedMs ?? 0)}.`
       : "Upload a recording to trigger transcription, extraction, summary, and action pipelines.";
 
   return (
@@ -177,6 +219,9 @@ export default function MeetingsPage() {
         status={jobStatus.data?.status}
         completedNodes={jobStatus.data?.completed_nodes}
         errors={jobStatus.data?.errors}
+        elapsedMs={elapsedMs}
+        lastDurationMs={activeJobMetaQuery.data.lastDurationMs}
+        nodeTimings={jobStatus.data?.node_timings}
       />
 
       {error ? (
@@ -208,7 +253,7 @@ export default function MeetingsPage() {
 
       {jobStatus.data?.status === "processing" ? (
         <div className="rounded-[16px] border border-border bg-surface-2 p-4 text-sm text-text-secondary">
-          Processing in progress. We will refresh your meetings when the job is done.
+          Processing in progress ({formatDuration(elapsedMs ?? 0)}). We will refresh your meetings when the job is done.
         </div>
       ) : null}
 
