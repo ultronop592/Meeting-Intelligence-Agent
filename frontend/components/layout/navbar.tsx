@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Bell, Search, UploadCloud } from "lucide-react";
+import { Bell, Rows2, Search, SidebarClose, SidebarOpen, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const mobileNav = [
   { href: "/dashboard", label: "Dashboard" },
@@ -13,28 +14,107 @@ const mobileNav = [
   { href: "/agent-chat", label: "Agent Chat" },
 ];
 
-export function Navbar() {
+type NavbarProps = {
+  collapsed: boolean;
+  compactMode: boolean;
+  onToggleCollapse: () => void;
+  onToggleCompact: () => void;
+  onToggleMobile: () => void;
+};
+
+export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompact, onToggleMobile }: NavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [searchValue, setSearchValue] = useState("");
+
+  const submitSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const value = searchValue.trim();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mia_global_search", value);
+      window.dispatchEvent(new CustomEvent("mia-global-search", { detail: value }));
+    }
+    const targetBase = pathname?.startsWith("/meetings/") ? pathname : "/meetings";
+    router.push(targetBase);
+  };
 
   return (
-    <div className="sticky top-0 z-30 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur md:px-6 lg:px-10">
+    <div
+      className={cn(
+        "sticky top-0 z-30 border-b border-border/70 bg-surface/92 backdrop-blur",
+        compactMode ? "px-3 py-2 md:px-4 lg:px-6" : "px-4 py-3 md:px-6 lg:px-10"
+      )}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-[12px] border border-border bg-surface-2 px-3 py-2 text-sm text-text-tertiary md:flex">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleMobile}
+            className="md:hidden"
+            aria-label="Open sidebar"
+          >
+            <SidebarOpen className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleCollapse}
+            className="hidden md:inline-flex"
+            aria-label="Toggle sidebar"
+          >
+            {collapsed ? <SidebarOpen className="h-4 w-4" /> : <SidebarClose className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleCompact}
+            className="hidden md:inline-flex"
+            aria-label="Toggle compact mode"
+          >
+            <Rows2 className="h-4 w-4" />
+          </Button>
+          <form
+            onSubmit={submitSearch}
+            className="hidden items-center gap-2 rounded-[12px] border border-border bg-surface-2 px-3 py-2 text-sm text-text-tertiary md:flex"
+          >
             <Search className="h-4 w-4" />
-            <span>Search meetings, people, or action items</span>
-          </div>
+            <input
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder={pathname?.startsWith("/meetings/") ? "Filter this meeting" : "Search meetings"}
+              className="w-72 bg-transparent text-sm text-foreground outline-none placeholder:text-text-tertiary"
+            />
+          </form>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" aria-label="Upload a new meeting">
+          <Link
+            href="/meetings"
+            className="inline-flex h-8 items-center rounded-[10px] border border-border bg-surface px-3 text-xs text-foreground hover:bg-surface-2"
+            aria-label="Upload a new meeting"
+          >
             <UploadCloud className="mr-2 h-4 w-4" /> Upload
-          </Button>
+          </Link>
           <Button variant="ghost" size="sm" aria-label="Notifications">
             <Bell className="h-4 w-4" />
           </Button>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 md:hidden">
+        <form onSubmit={submitSearch} className="flex w-full items-center gap-2">
+          <div className="flex h-8 flex-1 items-center rounded-[10px] border border-border bg-surface-2 px-2">
+            <Search className="h-4 w-4 text-text-tertiary" />
+            <input
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              placeholder="Search"
+              className="w-full bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-text-tertiary"
+            />
+          </div>
+          <Button size="sm" variant="outline" type="submit">
+            Go
+          </Button>
+        </form>
         {mobileNav.map((item) => (
           <Link
             key={item.href}

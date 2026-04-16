@@ -90,7 +90,7 @@ export function ProcessingTimeline({
   const isLive = status === "processing";
 
   return (
-    <div className="rounded-[16px] border border-border bg-surface p-4">
+    <div className="elevated-card rounded-[16px] border border-border/65 bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Agent pipeline</h3>
         <span className="text-xs text-text-tertiary">
@@ -100,13 +100,13 @@ export function ProcessingTimeline({
 
       {isLive && elapsedMs !== null ? (
         <p className="mt-2 text-xs text-text-secondary">
-          Elapsed: <span className="font-medium text-foreground">{formatDuration(elapsedMs)}</span>
+          Elapsed: <span className="font-medium text-foreground">{formatDuration(elapsedMs ?? 0)}</span>
         </p>
       ) : null}
 
       {!isLive && lastDurationMs !== null ? (
         <p className="mt-2 text-xs text-text-secondary">
-          Last completion time: <span className="font-medium text-foreground">{formatDuration(lastDurationMs)}</span>
+          Last completion time: <span className="font-medium text-foreground">{formatDuration(lastDurationMs ?? 0)}</span>
         </p>
       ) : null}
 

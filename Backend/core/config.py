@@ -24,6 +24,8 @@ class Settings(BaseSettings):
  
     # --- Groq ----------------------------------------------------------------
     groq_api_key: str
+    groq_timeout_seconds: int = 120
+    groq_transcription_max_mb: int = 24
  
     # --- Neon (Postgres) -----------------------------------------------------
     database_url:      str   # async  URL  — postgresql+asyncpg://...
@@ -69,6 +71,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
+
+    @property
+    def groq_transcription_max_bytes(self) -> int:
+        return self.groq_transcription_max_mb * 1024 * 1024
  
     @property
     def langsmith_enabled(self) -> bool:

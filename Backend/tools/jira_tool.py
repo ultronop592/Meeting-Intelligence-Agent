@@ -46,9 +46,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from backend.core.config import settings
-from backend.db.database import log_notification
-from backend.models.schemas import AgentState, ActionItem, Priority
+from core.config import settings
+from db.database import log_notification
+from models.schemas import AgentState, ActionItem, Priority
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PRIORITY_MAP: dict[str, str] = {
-    Priority.HIGH.value:   "High",
-    Priority.MEDIUM.value: "Medium",
-    Priority.LOW.value:    "Low",
+    Priority.high.value:   "High",
+    Priority.medium.value: "Medium",
+    Priority.low.value:    "Low",
 }
 
 

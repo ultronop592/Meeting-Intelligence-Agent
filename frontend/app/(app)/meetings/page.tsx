@@ -44,17 +44,32 @@ export default function MeetingsPage() {
     gcTime: Infinity,
   });
   const jobStatus = useJobStatus(activeJobMetaQuery.data.jobId);
-  const [timerTick, setTimerTick] = useState(0);
-  const [query, setQuery] = useState("");
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  const [query, setQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("mia_global_search") || "";
+  });
   const [filter, setFilter] = useState<"all" | "actionable">("all");
 
   useEffect(() => {
     if (jobStatus.data?.status !== "processing") return;
     const id = window.setInterval(() => {
-      setTimerTick((value) => value + 1);
+      setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(id);
   }, [jobStatus.data?.status]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setQuery(custom.detail || "");
+    };
+
+    window.addEventListener("mia-global-search", handler as EventListener);
+    return () => {
+      window.removeEventListener("mia-global-search", handler as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (uploadMutation.isSuccess) {
@@ -68,7 +83,13 @@ export default function MeetingsPage() {
     if (uploadMutation.isError) {
       toast.error(toUserErrorMessage(uploadMutation.error));
     }
-  }, [uploadMutation.isSuccess, uploadMutation.isError, uploadMutation.error]);
+  }, [
+    uploadMutation.isSuccess,
+    uploadMutation.isError,
+    uploadMutation.error,
+    uploadMutation.data?.job_id,
+    queryClient,
+  ]);
 
   useEffect(() => {
     if (!jobStatus.data) return;
@@ -97,9 +118,9 @@ export default function MeetingsPage() {
 
   const elapsedMs = useMemo(() => {
     const startedAt = activeJobMetaQuery.data.startedAt;
-    if (!startedAt || jobStatus.data?.status !== "processing") return null;
-    return Date.now() - startedAt;
-  }, [activeJobMetaQuery.data.startedAt, jobStatus.data?.status, timerTick]);
+    if (!startedAt || jobStatus.data?.status !== "processing" || nowMs === null) return null;
+    return nowMs - startedAt;
+  }, [activeJobMetaQuery.data.startedAt, jobStatus.data?.status, nowMs]);
 
   const filtered = useMemo(() => {
     const meetings = data ?? [];

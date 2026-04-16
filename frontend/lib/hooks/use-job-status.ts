@@ -8,7 +8,7 @@ export function useJobStatus(jobId: string | null) {
     queryKey: ["job-status", jobId],
     queryFn: () => meetingApi.getProcessingStatus(jobId ?? ""),
     enabled: Boolean(jobId),
-    refetchInterval: (data) =>
-      data && data.status === "processing" ? 2000 : false,
+    refetchInterval: (query) =>
+      query.state.data?.status === "processing" ? 2000 : false,
   });
 }

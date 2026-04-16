@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -114,17 +114,14 @@ export function UploadDropzone({
     }
   };
 
-  const handleDrop = useCallback(
-    async (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      setIsDragging(false);
-      const file = event.dataTransfer.files?.[0];
-      if (file) {
-        await triggerUpload(file);
-      }
-    },
-    [disabled, isBusy]
-  );
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      await triggerUpload(file);
+    }
+  };
 
   return (
     <div

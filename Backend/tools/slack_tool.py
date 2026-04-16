@@ -50,10 +50,10 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from backend.core.config import settings
-from backend.db.database import log_notification
-from backend.models.schemas import AgentState, ActionItem
-from backend.tools.email_tool import send_emails
+from core.config import settings
+from db.database import log_notification
+from models.schemas import AgentState, ActionItem
+from tools.email_tool import send_emails
 import asyncio
 
 logger = logging.getLogger(__name__)

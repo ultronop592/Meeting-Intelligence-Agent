@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,10 +8,13 @@ import { useMeetingDetail } from "@/lib/hooks/use-meeting-detail";
 import { useAgentChat } from "@/lib/hooks/use-agent-chat";
 import { meetingApi } from "@/lib/api/meetings";
 import { toUserErrorMessage } from "@/lib/api/client";
+import type { ActionItemStatus, NotificationLogRow } from "@/types/api";
 import { ChatBubble } from "@/components/chat/chat-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
+
+type SendChannel = "email" | "slack" | "jira" | "calendar";
 
 export default function MeetingDetailPage() {
   const params = useParams();
@@ -20,15 +23,84 @@ export default function MeetingDetailPage() {
   const meetingId = typeof params?.id === "string" ? params.id : null;
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
   const chatMutation = useAgentChat();
+  const [message, setMessage] = useState("");
+  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string }[]>([]);
+  const [daysFromNow, setDaysFromNow] = useState(7);
+  const [savingActionItemId, setSavingActionItemId] = useState<string | null>(null);
+  const [savingParticipantId, setSavingParticipantId] = useState<string | null>(null);
+  const [sendingChannel, setSendingChannel] = useState<SendChannel | null>(null);
+  const [participantDrafts, setParticipantDrafts] = useState<Record<string, string>>({});
+  const [optimisticNotifications, setOptimisticNotifications] = useState<NotificationLogRow[]>([]);
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return (localStorage.getItem("mia_global_search") || "").trim().toLowerCase();
+  });
+
+  const title = useMemo(() => data?.meeting.title ?? "Meeting detail", [data?.meeting.title]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setSearchQuery((custom.detail || "").trim().toLowerCase());
+    };
+
+    window.addEventListener("mia-global-search", handler as EventListener);
+    return () => {
+      window.removeEventListener("mia-global-search", handler as EventListener);
+    };
+  }, []);
+
+  const filteredActionItems = useMemo(() => {
+    const items = data?.action_items ?? [];
+    if (!searchQuery) return items;
+    return items.filter((item) =>
+      [item.description, item.owner, item.due_date, item.priority, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchQuery)
+    );
+  }, [data?.action_items, searchQuery]);
+
+  const filteredDecisions = useMemo(() => {
+    const decisions = data?.decisions ?? [];
+    if (!searchQuery) return decisions;
+    return decisions.filter((decision) =>
+      [decision.description, decision.context].join(" ").toLowerCase().includes(searchQuery)
+    );
+  }, [data?.decisions, searchQuery]);
+
+  const filteredParticipants = useMemo(() => {
+    const participants = data?.participants ?? [];
+    if (!searchQuery) return participants;
+    return participants.filter((participant) =>
+      [participant.name, participant.email || ""].join(" ").toLowerCase().includes(searchQuery)
+    );
+  }, [data?.participants, searchQuery]);
+
+  const allNotifications = useMemo(() => {
+    return [...optimisticNotifications, ...(data?.notifications ?? [])];
+  }, [optimisticNotifications, data?.notifications]);
+
+  const channelStatuses = useMemo(() => {
+    const channels: SendChannel[] = ["email", "slack", "jira", "calendar"];
+    return channels.map((channel) => {
+      const latest = allNotifications.find((log) => log.type === channel);
+      return { channel, status: latest?.status || "idle" };
+    });
+  }, [allNotifications]);
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => meetingApi.deleteMeeting(id),
   });
-  const [message, setMessage] = useState("");
-  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string }[]>(
-    []
-  );
 
-  const title = useMemo(() => data?.meeting.title ?? "Meeting detail", [data?.meeting.title]);
+  const updateActionItemMutation = useMutation({
+    mutationFn: async ({ itemId, status }: { itemId: string; status: ActionItemStatus }) =>
+      meetingApi.updateActionItem(meetingId ?? "", itemId, status),
+  });
+
+  const updateParticipantMutation = useMutation({
+    mutationFn: async ({ participantId, email }: { participantId: string; email: string }) =>
+      meetingApi.updateParticipantEmail(meetingId ?? "", participantId, email),
+  });
 
   const sendMessage = async () => {
     const content = message.trim();
@@ -47,9 +119,100 @@ export default function MeetingDetailPage() {
     }
   };
 
+  const invalidateMeetingData = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    await queryClient.invalidateQueries({ queryKey: ["meetings"] });
+  };
+
+  const updateActionStatus = async (itemId: string, status: ActionItemStatus) => {
+    if (!meetingId) return;
+    setSavingActionItemId(itemId);
+    try {
+      await updateActionItemMutation.mutateAsync({ itemId, status });
+      toast.success("Action item status updated.");
+      await invalidateMeetingData();
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setSavingActionItemId(null);
+    }
+  };
+
+  const saveParticipantEmail = async (participantId: string) => {
+    if (!meetingId) return;
+    const email = (participantDrafts[participantId] || "").trim();
+    if (!email) {
+      toast.error("Please enter an email before saving.");
+      return;
+    }
+
+    setSavingParticipantId(participantId);
+    try {
+      await updateParticipantMutation.mutateAsync({ participantId, email });
+      toast.success("Participant email updated.");
+      await invalidateMeetingData();
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setSavingParticipantId(null);
+    }
+  };
+
+  const sendIntegration = async (channel: SendChannel) => {
+    if (!meetingId) return;
+    setSendingChannel(channel);
+    const optimisticId = `optimistic-${channel}-${Date.now()}`;
+    setOptimisticNotifications((prev) => [
+      {
+        id: optimisticId,
+        meeting_id: meetingId,
+        type: channel,
+        status: "pending",
+        detail: "Sending...",
+        created_at: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+
+    try {
+      if (channel === "email") {
+        await meetingApi.sendEmail(meetingId);
+      } else if (channel === "slack") {
+        await meetingApi.sendSlack(meetingId);
+      } else if (channel === "jira") {
+        await meetingApi.sendJira(meetingId);
+      } else {
+        await meetingApi.sendCalendar(meetingId, daysFromNow);
+      }
+
+      toast.success(`${channel.toUpperCase()} action sent.`);
+      setOptimisticNotifications((prev) =>
+        prev.map((entry) =>
+          entry.id === optimisticId
+            ? { ...entry, status: "sent", detail: "Queued successfully" }
+            : entry
+        )
+      );
+      await invalidateMeetingData();
+      window.setTimeout(() => {
+        setOptimisticNotifications((prev) => prev.filter((entry) => entry.id !== optimisticId));
+      }, 2000);
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+      setOptimisticNotifications((prev) =>
+        prev.map((entry) =>
+          entry.id === optimisticId
+            ? { ...entry, status: "failed", detail: toUserErrorMessage(err) }
+            : entry
+        )
+      );
+    } finally {
+      setSendingChannel(null);
+    }
+  };
+
   const deleteMeeting = async () => {
     if (!meetingId || deleteMutation.isPending) return;
-
     const confirmed = window.confirm(
       "Delete this meeting permanently? This will remove summary, action items, decisions, and related records."
     );
@@ -66,10 +229,10 @@ export default function MeetingDetailPage() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[2.2fr_1fr]">
+    <div className="grid gap-6 lg:grid-cols-[2.15fr_1fr]">
       <div className="space-y-4">
         <div className="rounded-[16px] border border-border bg-surface p-5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Meeting</p>
               <h2 className="mt-2 text-xl font-semibold text-foreground">{title}</h2>
@@ -88,9 +251,7 @@ export default function MeetingDetailPage() {
               </Button>
             </div>
           </div>
-          {error ? (
-            <p className="mt-3 text-sm text-danger">Unable to load meeting details.</p>
-          ) : null}
+          {error ? <p className="mt-3 text-sm text-danger">Unable to load meeting details.</p> : null}
         </div>
 
         {isLoading ? (
@@ -103,23 +264,44 @@ export default function MeetingDetailPage() {
           <div className="space-y-4">
             <div className="rounded-[16px] border border-border bg-surface p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Summary</p>
-              <p className="mt-3 text-sm leading-7 text-text-secondary">
-                {data.meeting.detailed_summary}
-              </p>
+              <p className="mt-3 text-sm leading-7 text-text-secondary">{data.meeting.detailed_summary}</p>
+              {searchQuery ? (
+                <p className="mt-2 text-xs text-text-tertiary">Filter applied: &quot;{searchQuery}&quot;</p>
+              ) : null}
             </div>
 
             <div className="rounded-[16px] border border-border bg-surface p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Action items</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Action items</p>
+                <p className="text-xs text-text-tertiary">PATCH /meetings/:id/action-items/:item_id</p>
+              </div>
               <div className="mt-4 space-y-3">
-                {data.action_items.length === 0 ? (
+                {filteredActionItems.length === 0 ? (
                   <p className="text-sm text-text-secondary">No action items extracted.</p>
                 ) : (
-                  data.action_items.map((item) => (
+                  filteredActionItems.map((item) => (
                     <div key={item.id} className="rounded-[12px] border border-border bg-surface-2 p-3">
                       <p className="text-sm font-medium text-foreground">{item.description}</p>
                       <p className="mt-1 text-xs text-text-tertiary">
-                        Owner: {item.owner} • Due: {item.due_date} • Priority: {item.priority}
+                        Owner: {item.owner} | Due: {item.due_date} | Priority: {item.priority}
                       </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <select
+                          className="h-8 rounded-[10px] border border-border bg-surface px-2 text-xs"
+                          value={item.status}
+                          onChange={(event) =>
+                            void updateActionStatus(item.id, event.target.value as ActionItemStatus)
+                          }
+                          disabled={savingActionItemId === item.id}
+                        >
+                          <option value="open">Open</option>
+                          <option value="in_progress">In progress</option>
+                          <option value="done">Done</option>
+                        </select>
+                        {savingActionItemId === item.id ? (
+                          <span className="text-xs text-text-tertiary">Saving...</span>
+                        ) : null}
+                      </div>
                     </div>
                   ))
                 )}
@@ -129,13 +311,133 @@ export default function MeetingDetailPage() {
             <div className="rounded-[16px] border border-border bg-surface p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Decisions</p>
               <div className="mt-4 space-y-3">
-                {data.decisions.length === 0 ? (
+                {filteredDecisions.length === 0 ? (
                   <p className="text-sm text-text-secondary">No decisions extracted.</p>
                 ) : (
-                  data.decisions.map((decision) => (
+                  filteredDecisions.map((decision) => (
                     <div key={decision.id} className="rounded-[12px] border border-border bg-surface-2 p-3">
                       <p className="text-sm font-medium text-foreground">{decision.description}</p>
                       <p className="mt-1 text-xs text-text-tertiary">{decision.context}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[16px] border border-border bg-surface p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Participants</p>
+                <p className="text-xs text-text-tertiary">PATCH /meetings/:id/participants/:participant_id</p>
+              </div>
+              <div className="mt-4 space-y-3">
+                {filteredParticipants.length === 0 ? (
+                  <p className="text-sm text-text-secondary">No participants extracted.</p>
+                ) : (
+                  filteredParticipants.map((participant) => (
+                    <div key={participant.id} className="rounded-[12px] border border-border bg-surface-2 p-3">
+                      <p className="text-sm font-medium text-foreground">{participant.name}</p>
+                      <div className="mt-2 flex gap-2">
+                        <Input
+                          value={
+                            participantDrafts[participant.id] ?? participant.email ?? ""
+                          }
+                          onChange={(event) =>
+                            setParticipantDrafts((prev) => ({
+                              ...prev,
+                              [participant.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="name@company.com"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={savingParticipantId === participant.id}
+                          onClick={() => void saveParticipantEmail(participant.id)}
+                        >
+                          {savingParticipantId === participant.id ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[16px] border border-border bg-surface p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Integrations</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {channelStatuses.map((entry) => (
+                  <span
+                    key={entry.channel}
+                    className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.08em] ${
+                      entry.status === "sent"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : entry.status === "failed"
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : entry.status === "pending"
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-border bg-surface-2 text-text-tertiary"
+                    }`}
+                  >
+                    {entry.channel}: {entry.status}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={sendingChannel !== null}
+                  onClick={() => void sendIntegration("email")}
+                >
+                  {sendingChannel === "email" ? "Sending..." : "Send Email"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={sendingChannel !== null}
+                  onClick={() => void sendIntegration("slack")}
+                >
+                  {sendingChannel === "slack" ? "Sending..." : "Send Slack"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={sendingChannel !== null}
+                  onClick={() => void sendIntegration("jira")}
+                >
+                  {sendingChannel === "jira" ? "Sending..." : "Create Jira"}
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    className="w-28"
+                    min={1}
+                    max={365}
+                    value={daysFromNow}
+                    onChange={(event) => setDaysFromNow(Number(event.target.value || 7))}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={sendingChannel !== null}
+                    onClick={() => void sendIntegration("calendar")}
+                  >
+                    {sendingChannel === "calendar" ? "Sending..." : "Book Calendar"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {allNotifications.length === 0 ? (
+                  <p className="text-xs text-text-tertiary">No integration logs yet.</p>
+                ) : (
+                  allNotifications.slice(0, 8).map((log) => (
+                    <div key={log.id} className="rounded-[10px] border border-border bg-surface-2 px-3 py-2 text-xs">
+                      <span className="font-medium uppercase text-foreground">{log.type}</span>
+                      <span className="mx-2 text-text-tertiary">{log.status}</span>
+                      <span className="text-text-secondary">{log.detail || "-"}</span>
                     </div>
                   ))
                 )}
@@ -153,16 +455,14 @@ export default function MeetingDetailPage() {
         <div className="flex-1 space-y-3 overflow-auto py-4">
           {thread.length === 0 ? (
             <div className="rounded-[14px] border border-border bg-surface-2 p-4 text-sm text-text-secondary">
-              Ask for action items, decisions, or follow-ups.
+              Ask for action items, decisions, owners, and follow-ups.
             </div>
           ) : (
             thread.map((entry, index) => (
               <ChatBubble key={index} role={entry.role} message={entry.message} />
             ))
           )}
-          {chatMutation.isPending ? (
-            <ChatBubble role="assistant" message="Thinking..." />
-          ) : null}
+          {chatMutation.isPending ? <ChatBubble role="assistant" message="Thinking..." /> : null}
         </div>
         <div className="flex gap-2 border-t border-border pt-3">
           <Input

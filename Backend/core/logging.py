@@ -17,6 +17,10 @@ def setup_logging() -> None:
         level=log_level,
         
     )
+
+    # Keep app logs readable by muting verbose transport-level debug logs.
+    for noisy_logger in ["httpx", "httpcore", "groq"]:
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
     
     # // shared processors run on every log message
     

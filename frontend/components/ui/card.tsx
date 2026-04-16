@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 type DivProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function Card({ className, ...props }: DivProps) {
-  return <div className={cn("rounded-[12px] border border-border bg-surface", className)} {...props} />;
+  return <div className={cn("rounded-[12px] border border-border/65 bg-surface", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: DivProps) {

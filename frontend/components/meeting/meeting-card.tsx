@@ -12,7 +12,7 @@ export function MeetingCard({ meeting }: { meeting: MeetingListItem }) {
   return (
     <Link
       href={`/meetings/${meeting.id}`}
-      className="group flex h-full flex-col rounded-[16px] border border-border bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-accent/60"
+      className="elevated-card group flex h-full flex-col rounded-[16px] border border-border/65 bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-accent/55"
     >
       <div className="flex items-start justify-between gap-3">
         <div>

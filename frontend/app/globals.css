@@ -39,6 +39,10 @@
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.16), transparent 28%),
+    radial-gradient(circle at 100% 10%, rgba(28, 28, 28, 0.08), transparent 22%),
+    linear-gradient(180deg, #f8f6f0 0%, #f3efe5 100%);
 }
 
 ::selection {
@@ -47,14 +51,16 @@ body {
 
 @layer base {
   body {
-    font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans), "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
     @apply min-h-screen antialiased;
   }
 
   h1,
   h2,
   h3 {
+    font-family: var(--font-serif), Georgia, Cambria, "Times New Roman", serif;
     letter-spacing: -0.02em;
+    font-weight: 520;
   }
 }
 
@@ -65,6 +71,21 @@ body {
     max-width: var(--app-content-max);
     padding-inline: var(--app-shell-x);
     padding-block: var(--app-shell-y);
+  }
+
+  .compact-ui {
+    --app-content-max: 1200px;
+    --app-shell-x: 0.85rem;
+    --app-shell-y: 1rem;
+  }
+
+  .compact-ui .heading-title {
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .compact-ui .heading-display {
+    font-size: 1.8rem;
   }
 
   .heading-display {
@@ -91,5 +112,24 @@ body {
   .glass-panel {
     background: color-mix(in oklab, var(--color-surface) 92%, transparent);
     border: 1px solid var(--color-border);
+  }
+
+  .elevated-card {
+    box-shadow: 0 8px 26px -24px rgba(17, 17, 17, 0.55);
+  }
+
+  .stagger-in {
+    animation: stagger-in 0.35s ease both;
+  }
+}
+
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

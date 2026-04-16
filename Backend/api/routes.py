@@ -2,6 +2,7 @@
 import os
 import time
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from core.config import settings
 from db.database import AsyncSessionLocal, get_db
 from db.models import ActionItem as DBActionItem
 from db.models import Decision, Meeting, NotificationLog, Participant
+from graph.agent_graph import run_meeting_agent
 from models.schemas import (
     ActionItemRow,
     ActionItemStatus,
@@ -118,97 +120,54 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
 
     try:
         phase_start = time.perf_counter()
+
+        # Run the sync graph runner in a worker thread to keep the async event loop responsive.
+        state = await asyncio.to_thread(
+            run_meeting_agent,
+            payload.audio_file_path,
+            payload.audio_filename,
+        )
+
+        if not state.meeting_id:
+            raise RuntimeError("Pipeline finished without persisting a meeting_id")
+
         async with AsyncSessionLocal() as session:
-            title_base = Path(payload.audio_filename).stem.replace("_", " ").strip() or "Untitled meeting"
-            after_transcribe = time.perf_counter()
-            extract_timing = {
-                "started_at": _utc_iso_now(),
-                "completed_at": None,
-                "duration_ms": None,
-            }
-            meeting = Meeting(
-                title=title_base.title(),
-                audio_filename=payload.audio_filename,
-                duration_minutes=30,
-                short_summary="Meeting processed and ready for review.",
-                detailed_summary="This meeting was ingested successfully. You can now review action items and decisions.",
-                embedding_status="pending",
-            )
-            session.add(meeting)
-            await session.flush()
-            extract_timing["completed_at"] = _utc_iso_now()
-            extract_timing["duration_ms"] = int((time.perf_counter() - after_transcribe) * 1000)
+            meeting = await session.get(Meeting, state.meeting_id)
+            if not meeting:
+                raise RuntimeError(f"Meeting not found after pipeline run: {state.meeting_id}")
 
-            summarize_started_at = _utc_iso_now()
-            summarize_start = time.perf_counter()
+            action_items_count = (
+                await session.execute(select(func.count(DBActionItem.id)).where(DBActionItem.meeting_id == meeting.id))
+            ).scalar_one()
+            decisions_count = (
+                await session.execute(select(func.count(Decision.id)).where(Decision.meeting_id == meeting.id))
+            ).scalar_one()
+            participants_count = (
+                await session.execute(select(func.count(Participant.id)).where(Participant.meeting_id == meeting.id))
+            ).scalar_one()
 
-            session.add(
-                DBActionItem(
-                    meeting_id=meeting.id,
-                    description="Review transcript and confirm action items.",
-                    owner="Team",
-                    due_date="2026-12-31",
-                    priority="medium",
-                    status="open",
-                )
-            )
-            session.add(
-                Decision(
-                    meeting_id=meeting.id,
-                    description="Proceed with the current implementation plan.",
-                    context="Consensus in the recorded meeting.",
-                )
-            )
-            session.add(Participant(meeting_id=meeting.id, name="Participant 1", email=None))
+        completed_at = _utc_iso_now()
+        total_duration_ms = int((time.perf_counter() - phase_start) * 1000)
+        notifications_sent = len([n for n in state.notification_results if n.get("status") == "sent"])
 
-            save_started_at = _utc_iso_now()
-            save_start = time.perf_counter()
-
-            await session.commit()
-
-            completed_at = _utc_iso_now()
-            total_duration_ms = int((time.perf_counter() - phase_start) * 1000)
-
-            _job_status[job_id] = {
-                "status": "completed",
-                "completed_nodes": ["upload", "process", "save_to_database"],
-                "errors": [],
-                "meeting_id": meeting.id,
-                "started_at": job_started_at,
-                "completed_at": completed_at,
-                "duration_ms": total_duration_ms,
-                "node_timings": {
-                    "upload": {
-                        "started_at": job_started_at,
-                        "completed_at": job_started_at,
-                        "duration_ms": 0,
-                    },
-                    "transcribe_audio": {
-                        "started_at": job_started_at,
-                        "completed_at": _utc_iso_now(),
-                        "duration_ms": int((after_transcribe - phase_start) * 1000),
-                    },
-                    "extract_information": extract_timing,
-                    "generate_summary": {
-                        "started_at": summarize_started_at,
-                        "completed_at": save_started_at,
-                        "duration_ms": int((save_start - summarize_start) * 1000),
-                    },
-                    "save_to_database": {
-                        "started_at": save_started_at,
-                        "completed_at": completed_at,
-                        "duration_ms": int((time.perf_counter() - save_start) * 1000),
-                    },
-                },
-                "title": meeting.title,
-                "short_summary": meeting.short_summary,
-                "action_items_count": 1,
-                "decisions_count": 1,
-                "participants_count": 1,
-                "jira_tickets_created": 0,
-                "calendar_event_id": None,
-                "notifications_sent": 0,
-            }
+        _job_status[job_id] = {
+            "status": "completed",
+            "completed_nodes": ["upload"] + state.completed_nodes,
+            "errors": state.errors,
+            "meeting_id": meeting.id,
+            "started_at": job_started_at,
+            "completed_at": completed_at,
+            "duration_ms": total_duration_ms,
+            "node_timings": _job_status[job_id].get("node_timings", {}),
+            "title": meeting.title,
+            "short_summary": meeting.short_summary,
+            "action_items_count": int(action_items_count or 0),
+            "decisions_count": int(decisions_count or 0),
+            "participants_count": int(participants_count or 0),
+            "jira_tickets_created": len(state.jira_ticket_ids),
+            "calendar_event_id": state.calendar_event_id,
+            "notifications_sent": notifications_sent,
+        }
     except Exception as exc:
         logger.exception("Processing job failed")
         completed_at = _utc_iso_now()

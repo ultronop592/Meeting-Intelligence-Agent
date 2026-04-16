@@ -52,9 +52,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from backend.core.config import settings
-from backend.db.database import log_notification
-from backend.models.schemas import AgentState
+from core.config import settings
+from db.database import log_notification
+from models.schemas import AgentState
 import asyncio
 
 logger = logging.getLogger(__name__)
