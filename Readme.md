@@ -1,123 +1,165 @@
-# Meeting Intelligence Agent
+# Meeting Intelligence Agent 🎙️🤖
 
-Meeting Intelligence Agent is a full-stack application that ingests meeting audio, processes it through an agent pipeline, stores structured outputs in Neon Postgres, and exposes a modern Next.js UI for reviewing summaries, decisions, action items, and agent chat.
+Meeting Intelligence Agent is a professional full-stack application designed to ingest meeting audio recordings, run them through an agentic workflow to transcribe and extract structured information, persist records in Neon Postgres, and automatically synchronize tasks and schedules across Jira, Google Calendar, Slack, and email.
 
-## Project Structure
+---
 
-- `Backend/`: FastAPI + LangGraph + SQLAlchemy service
-- `frontend/`: Next.js App Router UI with typed API client and React Query hooks
-- `API_INTEGRATION_MAP.md`: endpoint mapping notes
-- `IMPLEMENTATION_NOTES.md`: architecture and implementation notes
+## 🌟 Key Features
 
-## Tech Stack
+*   **Multi-Agent Coordination (LangGraph)**: An agent pipeline manages transcription, structured entity extraction, summarization, and database serialization, followed by auto-integration steps.
+*   **Audio Upload Stream**: High-performance, memory-efficient streamed upload handling files up to 1GB.
+*   **Structured Information Extraction**: Extracts specific action items, key decisions reached, participants list, and overall topics with deep semantic context.
+*   **Automatic Integrations**:
+    *   **Jira**: Auto-creates formatted Jira tasks for all identified action items.
+    *   **Google Calendar**: Books follow-up meetings via Google Cloud Service Accounts.
+    *   **Slack**: Formats summaries and action items into Slack cards.
+    *   **SendGrid**: Personalizes individual transactional emails so recipients only receive tasks assigned to *them*.
+*   **Responsive Next.js Frontend**: A modern workspace UI designed for reviewing meeting metadata, updating tasks, editing participant emails, and chatting with the conversational agent regarding meeting topics.
 
-- Backend: FastAPI, Uvicorn, LangGraph, Groq, SQLAlchemy, Neon Postgres, pgvector
-- Frontend: Next.js, React, TypeScript, Tailwind CSS, React Query, Zod
+---
 
-## Quick Start
+## 📂 Project Structure
 
-### 1. Backend setup
+The project is structured as a monorepo containing two main services:
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r Backend/requirements.txt
+```
+├── Backend/                 # FastAPI + LangGraph + SQLAlchemy service
+│   ├── README.md            # Detailed Backend Developer Guide & Architecture docs
+│   ├── agents/              # Transcription, Extraction, and Summary agents
+│   ├── api/                 # FastAPI routes and middleware
+│   ├── core/                # System configuration and structured logger
+│   ├── db/                  # SQLAlchemy tables & DB session dependencies
+│   ├── graph/               # LangGraph state machine structure
+│   └── tools/               # Integration connectors (Slack, Google Calendar, Jira, SendGrid)
+│
+├── frontend/                # Next.js App Router UI
+│   ├── README.md            # Frontend configuration and components overview
+│   ├── app/                 # App Router pages and client state wrappers
+│   ├── components/          # Reusable UI widgets and workspace viewports
+│   ├── lib/                 # Core API Client and React Query hooks
+│   └── tests/               # Vitest client-side integration tests
+│
+├── API_INTEGRATION_MAP.md   # Endpoint contracts mapping backend schemas to frontend hooks
+└── IMPLEMENTATION_NOTES.md  # Architectural assumptions, UX layout, and decisions log
 ```
 
-Create `Backend/.env` with the required values (minimum for local start):
+*For in-depth backend design patterns, schemas, and node specifications, please consult the [Backend Developer Guide](file:///c:/Agentic%20AI%20Project/Backend/README.md).*
 
-```bash
-APP_ENV=development
-SECRET_KEY=change-me
+---
 
-GROQ_API_KEY=your-key
+## 🛠️ Technology Stack
 
-DATABASE_URL=postgresql+asyncpg://user:pass@host/db?sslmode=require
-DATABASE_URL_SYNC=postgresql+psycopg2://user:pass@host/db?sslmode=require
+### Backend
+*   **Framework**: FastAPI (Python 3.10+)
+*   **Agent Flow**: LangGraph, LangChain Core
+*   **Inference APIs**: Groq (`whisper-large-v3`, `llama-3.3-70b-versatile`)
+*   **Database**: Neon Serverless Postgres with `pgvector`
+*   **ORM**: SQLAlchemy v2 (Asynchronous Asyncpg driver)
+*   **Observability**: LangSmith, Structlog (Structured JSON/Console outputs)
+*   **SDKs**: Atlassian Python API, SendGrid API, Slack SDK, Google API Python Client
 
-MAX_UPLOAD_SIZE_MB=1024
-UPLOAD_DIR=/tmp/meeting-agent-uploads
-```
+### Frontend
+*   **Framework**: Next.js 15 (React 19, TypeScript)
+*   **Styles**: Tailwind CSS
+*   **State & Fetching**: TanStack React Query v5
+*   **Form Validation**: Zod, React Hook Form
+*   **Test Suite**: Vitest, React Testing Library
 
-Run backend from the `Backend/` directory:
+---
 
-```bash
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-```
+## 🚀 Quick Start
 
-### 2. Frontend setup
+### 1. Backend Setup
 
+1.  Navigate to the `Backend` directory, configure a virtual environment, and install dependencies:
+    ```bash
+    cd Backend
+    python -m venv venv
+    
+    # Windows
+    .\venv\Scripts\activate
+    # macOS/Linux
+    source venv/bin/activate
+
+    pip install -r requirements.txt
+    ```
+
+2.  Create `Backend/.env` with required API keys and DB URLs:
+    ```env
+    APP_ENV=development
+    SECRET_KEY=generate-a-secure-secret-key
+    GROQ_API_KEY=your-groq-api-key
+    DATABASE_URL=postgresql+asyncpg://user:pass@host/db?sslmode=require
+    DATABASE_URL_SYNC=postgresql+psycopg2://user:pass@host/db?sslmode=require
+    ```
+
+3.  Boot the FastAPI Uvicorn reload server:
+    ```bash
+    uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+    ```
+    *   Swagger documentation is hosted at `http://localhost:8000/docs`.
+
+### 2. Frontend Setup
+
+1.  Navigate to the `frontend` directory and install packages:
+    ```bash
+    cd frontend
+    npm install
+    ```
+
+2.  Create `frontend/.env.local`:
+    ```env
+    NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    NEXT_PUBLIC_UPLOAD_DIR_HINT=/tmp/meeting-agent-uploads
+    ```
+
+3.  Boot the Next.js development server:
+    ```bash
+    npm run dev
+    ```
+    *   Open `http://localhost:3000` in your web browser.
+
+---
+
+## 🚦 End-to-End Processing Workflow
+
+1.  **Ingestion**: The user uploads an audio recording (.mp3, .wav, etc.) in the frontend dashboard.
+2.  **Streaming Upload**: The frontend calls `POST /meeting/upload`, which streams the file chunks directly onto the backend disk to minimize server memory footprints.
+3.  **Task Queue Trigger**: The frontend calls `POST /meetings/process` with the file metadata, spinning up a background task context.
+4.  **Agent Evaluation**:
+    *   Groq Whisper transcribes the recording into plaintext.
+    *   Llama-3.3 extracts entities (tasks, owners, dates, and topics) returning strict JSON structures.
+    *   Llama-3.3 evaluates the transcript to form title blocks and short summaries.
+    *   The engine writes structural rows to tables (`meetings`, `action_items`, `decisions`, `participants`).
+5.  **Integration Sync**: The graph automatically proceeds to:
+    *   Create corresponding tickets in Jira Cloud.
+    *   Add a follow-up date invitation in Google Calendar.
+    *   Submit summary logs to Slack.
+    *   Distribute personalized assignments to emails via SendGrid.
+6.  **Polling & State Management**: The frontend polls `GET /meetings/status/{job_id}` at 2-second intervals, displaying intermediate progress cards before pulling detailed outputs via `GET /meetings/{meeting_id}`.
+
+---
+
+## 🧪 Quality and Verification Checks
+
+### Frontend
+Run the UI validation suites:
 ```bash
 cd frontend
-npm install
+npm run lint    # ESLint verification
+npm run test    # Vitest testing
+npm run build   # Next.js compilation validation
 ```
 
-Create `frontend/.env.local`:
-
+### Backend
+Run Python tests:
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_UPLOAD_DIR_HINT=/tmp/meeting-agent-uploads
-```
-
-Run frontend:
-
-```bash
-npm run dev
-```
-
-Frontend: `http://localhost:3000`
-Backend docs: `http://localhost:8000/docs`
-
-## Verified API Integration
-
-Frontend API client in `frontend/lib/api/meetings.ts` is wired to backend routes in `Backend/api/routes.py`:
-
-- `GET /health`
-- `POST /meeting/upload`
-- `POST /meetings/process`
-- `GET /meetings/status/{job_id}`
-- `GET /meetings`
-- `GET /meetings/{meeting_id}`
-- `PATCH /meetings/{meeting_id}/action-items/{item_id}`
-- `PATCH /meetings/{meeting_id}/participants/{participant_id}?email=...`
-- `DELETE /meetings/{meeting_id}`
-- `POST /meetings/{meeting_id}/send/email`
-- `POST /meetings/{meeting_id}/send/slack`
-- `POST /meetings/{meeting_id}/send/jira`
-- `POST /meetings/{meeting_id}/send/calendar?days_from_now=...`
-- `POST /query`
-
-## End-to-End Flow
-
-1. Upload audio from Meetings page (`/meeting/upload`)
-2. Start processing job (`/meetings/process`)
-3. Poll job status until complete (`/meetings/status/{job_id}`)
-4. Load meeting list and details (`/meetings`, `/meetings/{meeting_id}`)
-5. Use meeting-level chat via `/query`
-6. Trigger send actions (email/slack/jira/calendar)
-
-## Quality Checks
-
-Frontend:
-
-```bash
-cd frontend
-npm run lint
-npm run test
-npm run build
-```
-
-Backend (if you use pytest locally):
-
-```bash
+cd Backend
 pytest
 ```
 
-## Notes
+---
 
-- The backend normalizes Neon async URLs from `sslmode=require` to `ssl=require` for `asyncpg` compatibility.
-- CORS is configured for local frontend origins (`localhost:3000` and `localhost:3001`).
+## 📄 License
 
-## License
-
-MIT
+Distributed under the MIT License. See `LICENSE` for more details.
