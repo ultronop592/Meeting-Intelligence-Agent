@@ -314,9 +314,9 @@ async def test_upload_unsupported_file_type(async_client):
 @pytest.mark.asyncio
 async def test_upload_empty_file(async_client):
     import io
-    with patch("builtins.open", MagicMock(side_effect=lambda *a, **kw: open(os.devnull, "wb"))):
-        resp = await async_client.post(
-            "/meeting/upload",
-            files={"file": ("audio.mp3", io.BytesIO(b""), "audio/mpeg")},
-        )
+    resp = await async_client.post(
+        "/meeting/upload",
+        files={"file": ("audio.mp3", io.BytesIO(b""), "audio/mpeg")},
+    )
     assert resp.status_code == 400
+    assert "Uploaded file is empty" in resp.json()["detail"]
