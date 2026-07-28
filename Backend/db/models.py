@@ -4,8 +4,10 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum as SAEnum,
+    Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -150,3 +152,44 @@ class NotificationLog(Base):
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
  
     meeting = relationship("Meeting", back_populates="notifications_log")
+
+
+# TABLE 6 — processing_jobs
+
+
+class ProcessingJob(Base):
+    """Persists background meeting-processing job state so it survives
+    server restarts and is visible across multiple worker processes."""
+
+    __tablename__ = "processing_jobs"
+
+    id = Column(String, primary_key=True, default=_uuid)
+
+    status = Column(
+        SAEnum("processing", "completed", "failed", name="jobstatus"),
+        nullable=False,
+        default="processing",
+    )
+
+    meeting_id = Column(
+        String, ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Lists stored as JSON arrays
+    completed_nodes = Column(JSON, nullable=False, default=list)
+    errors          = Column(JSON, nullable=False, default=list)
+    node_timings    = Column(JSON, nullable=False, default=dict)
+
+    # Summary fields populated on completion
+    title               = Column(String,  nullable=True)
+    short_summary       = Column(Text,    nullable=True)
+    action_items_count  = Column(Integer, nullable=True)
+    decisions_count     = Column(Integer, nullable=True)
+    participants_count  = Column(Integer, nullable=True)
+    jira_tickets_created= Column(Integer, nullable=True)
+    calendar_event_id   = Column(String,  nullable=True)
+    notifications_sent  = Column(Integer, nullable=True)
+    duration_ms         = Column(Integer, nullable=True)
+
+    started_at   = Column(DateTime(timezone=True), default=_now, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)

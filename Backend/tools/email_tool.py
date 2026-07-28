@@ -62,6 +62,17 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro) -> None:
+    """Run an async coroutine safely from sync/thread context.
+    Uses create_task if a loop is already running, otherwise asyncio.run().
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        asyncio.run(coro)
+
+
 # ---------------------------------------------------------------------------
 # Email template builders
 # ---------------------------------------------------------------------------
@@ -333,7 +344,7 @@ def send_emails(
             logger.info("Email sent | to: %s <%s> | items: %d", name, email, len(my_items))
 
             if state.meeting_id:
-                asyncio.run(log_notification(
+                _run_async(log_notification(
                     meeting_id=state.meeting_id,
                     notification_type="email",
                     status="sent",
@@ -346,7 +357,7 @@ def send_emails(
             logger.error(error_msg)
 
             if state.meeting_id:
-                asyncio.run(log_notification(
+                _run_async(log_notification(
                     meeting_id=state.meeting_id,
                     notification_type="email",
                     status="failed",

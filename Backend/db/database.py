@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import(
 
 from core.config import settings
 from db.models import(
-    Base, Meeting, ActionItem, Decision, Participant, NotificationLog
+    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob
 )
 from models.schemas import AgentState, EmbeddingStatus
 
@@ -227,4 +227,66 @@ async def log_notification(
         except Exception as e:
             logger.error("Failed to log notification: %s", e)
             await session.rollback()
- 
+
+
+# =============================================================================
+# HELPERS — persistent job state (ProcessingJob table)
+# =============================================================================
+
+async def create_processing_job(job_id: str) -> None:
+    """Insert a new ProcessingJob row in 'processing' state."""
+    async with AsyncSessionLocal() as session:
+        try:
+            job = ProcessingJob(id=job_id, status="processing", completed_nodes=[], errors=[], node_timings={})
+            session.add(job)
+            await session.commit()
+        except Exception as e:
+            logger.error("Failed to create processing job %s: %s", job_id, e)
+            await session.rollback()
+
+
+async def update_processing_job(job_id: str, **kwargs) -> None:
+    """Merge a partial update into an existing ProcessingJob row."""
+    async with AsyncSessionLocal() as session:
+        try:
+            job = await session.get(ProcessingJob, job_id)
+            if not job:
+                logger.warning("update_processing_job: job %s not found", job_id)
+                return
+            for key, value in kwargs.items():
+                if hasattr(job, key):
+                    setattr(job, key, value)
+            await session.commit()
+        except Exception as e:
+            logger.error("Failed to update processing job %s: %s", job_id, e)
+            await session.rollback()
+
+
+async def get_processing_job(job_id: str) -> dict | None:
+    """Return a ProcessingJob as a plain dict, or None if not found."""
+    async with AsyncSessionLocal() as session:
+        try:
+            job = await session.get(ProcessingJob, job_id)
+            if not job:
+                return None
+            return {
+                "status":              job.status,
+                "completed_nodes":     job.completed_nodes or [],
+                "errors":              job.errors or [],
+                "meeting_id":          job.meeting_id,
+                "started_at":          job.started_at.isoformat() if job.started_at else None,
+                "completed_at":        job.completed_at.isoformat() if job.completed_at else None,
+                "duration_ms":         job.duration_ms,
+                "node_timings":        job.node_timings or {},
+                "title":               job.title,
+                "short_summary":       job.short_summary,
+                "action_items_count":  job.action_items_count,
+                "decisions_count":     job.decisions_count,
+                "participants_count":  job.participants_count,
+                "jira_tickets_created":job.jira_tickets_created,
+                "calendar_event_id":   job.calendar_event_id,
+                "notifications_sent":  job.notifications_sent,
+            }
+        except Exception as e:
+            logger.error("Failed to get processing job %s: %s", job_id, e)
+            return None

@@ -34,8 +34,17 @@ def route_after_database(state: AgentState) -> str:
 
 
 def save_to_database_node(state: AgentState) -> dict:
-    # Graph execution is sync; wrap async DB write in a dedicated event loop.
-    return asyncio.run(save_to_database(state))
+    """Synchronous LangGraph node wrapper for the async save_to_database().
+
+    LangGraph invokes this node from a background thread (via asyncio.to_thread).
+    That thread has no running event loop, so we create a fresh one, run the
+    coroutine to completion, then close and discard it to avoid any resource leaks.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(save_to_database(state))
+    finally:
+        loop.close()
 
 
 def build_agent_graph():

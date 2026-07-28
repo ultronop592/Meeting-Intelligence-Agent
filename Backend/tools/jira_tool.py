@@ -53,6 +53,24 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _run_async(coro) -> None:
+    """Run an async coroutine safely from sync code.
+
+    LangGraph nodes execute in a background thread via asyncio.to_thread().
+    That thread has no running event loop, so asyncio.run() works fine there.
+    However if this function is ever called from an already-running loop context
+    (e.g. a test or uvicorn's loop), a new dedicated loop is used instead.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # A running loop exists — we cannot call asyncio.run() from here.
+        # Schedule the coroutine as a fire-and-forget task.
+        loop.create_task(coro)
+    except RuntimeError:
+        # No running loop — safe to call asyncio.run().
+        asyncio.run(coro)
+
 # ---------------------------------------------------------------------------
 # Priority mapping — our values → Jira priority names
 # ---------------------------------------------------------------------------
@@ -213,7 +231,7 @@ def create_jira_tickets(state: AgentState) -> dict:
 
                 # Log success to notifications_log table
                 if state.meeting_id:
-                    asyncio.run(log_notification(
+                    _run_async(log_notification(
                         meeting_id=state.meeting_id,
                         notification_type="jira",
                         status="sent",
@@ -227,7 +245,7 @@ def create_jira_tickets(state: AgentState) -> dict:
 
             # Log failure to notifications_log table
             if state.meeting_id:
-                asyncio.run(log_notification(
+                _run_async(log_notification(
                     meeting_id=state.meeting_id,
                     notification_type="jira",
                     status="failed",

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 import time
 import uuid
@@ -11,7 +11,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from db.database import AsyncSessionLocal, get_db
+from db.database import (
+    AsyncSessionLocal,
+    create_processing_job,
+    get_db,
+    get_processing_job,
+    update_processing_job,
+)
 from db.models import ActionItem as DBActionItem
 from db.models import Decision, Meeting, NotificationLog, Participant
 from graph.agent_graph import run_meeting_agent
@@ -30,6 +36,12 @@ from models.schemas import (
     UpdateActionItemRequest,
 )
 
+# Tool connectors for live manual-send endpoints
+from tools.calender_tool import send_calendar_for_meeting
+from tools.email_tool import send_email_for_meeting
+from tools.jira_tool import send_jira_for_meeting
+from tools.slack_tool import send_slack_for_meeting
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -44,12 +56,15 @@ ALLOWED_AUDIO_EXTENSIONS = {
     ".mp4",
 }
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
-_job_status: dict[str, dict] = {}
 
 
 def _utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+# =============================================================================
+# UPLOAD
+# =============================================================================
 
 @router.post("/meeting/upload", tags=["meetings"])
 async def upload_audio(file: UploadFile = File(...)):
@@ -67,7 +82,6 @@ async def upload_audio(file: UploadFile = File(...)):
 
     size_bytes = 0
     try:
-        # Stream upload chunks to disk to avoid loading large files into memory.
         with open(file_path, "wb") as out:
             while True:
                 chunk = await file.read(UPLOAD_CHUNK_SIZE_BYTES)
@@ -99,29 +113,21 @@ async def upload_audio(file: UploadFile = File(...)):
     }
 
 
+# =============================================================================
+# PROCESSING JOB — DB-backed background job tracking
+# =============================================================================
+
 async def _process_job(job_id: str, payload: ProcessMeetingRequest):
-    job_started_at = _utc_iso_now()
-    _job_status[job_id] = {
-        "status": "processing",
-        "completed_nodes": ["upload"],
-        "errors": [],
-        "meeting_id": None,
-        "started_at": job_started_at,
-        "completed_at": None,
-        "duration_ms": None,
-        "node_timings": {
-            "upload": {
-                "started_at": job_started_at,
-                "completed_at": job_started_at,
-                "duration_ms": 0,
-            }
-        },
-    }
+    """Background task: run the full LangGraph pipeline and persist status in DB."""
+    job_started_at = datetime.now(timezone.utc)
+
+    # Create the job record in DB so it's visible even before completion.
+    await create_processing_job(job_id)
 
     try:
         phase_start = time.perf_counter()
 
-        # Run the sync graph runner in a worker thread to keep the async event loop responsive.
+        # Run the sync graph in a worker thread to keep the event loop free.
         state = await asyncio.to_thread(
             run_meeting_agent,
             payload.audio_file_path,
@@ -146,41 +152,36 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
                 await session.execute(select(func.count(Participant.id)).where(Participant.meeting_id == meeting.id))
             ).scalar_one()
 
-        completed_at = _utc_iso_now()
+        completed_at = datetime.now(timezone.utc)
         total_duration_ms = int((time.perf_counter() - phase_start) * 1000)
         notifications_sent = len([n for n in state.notification_results if n.get("status") == "sent"])
 
-        _job_status[job_id] = {
-            "status": "completed",
-            "completed_nodes": ["upload"] + state.completed_nodes,
-            "errors": state.errors,
-            "meeting_id": meeting.id,
-            "started_at": job_started_at,
-            "completed_at": completed_at,
-            "duration_ms": total_duration_ms,
-            "node_timings": _job_status[job_id].get("node_timings", {}),
-            "title": meeting.title,
-            "short_summary": meeting.short_summary,
-            "action_items_count": int(action_items_count or 0),
-            "decisions_count": int(decisions_count or 0),
-            "participants_count": int(participants_count or 0),
-            "jira_tickets_created": len(state.jira_ticket_ids),
-            "calendar_event_id": state.calendar_event_id,
-            "notifications_sent": notifications_sent,
-        }
+        await update_processing_job(
+            job_id,
+            status="completed",
+            completed_nodes=["upload"] + state.completed_nodes,
+            errors=state.errors,
+            meeting_id=meeting.id,
+            completed_at=completed_at,
+            duration_ms=total_duration_ms,
+            title=meeting.title,
+            short_summary=meeting.short_summary,
+            action_items_count=int(action_items_count or 0),
+            decisions_count=int(decisions_count or 0),
+            participants_count=int(participants_count or 0),
+            jira_tickets_created=len(state.jira_ticket_ids),
+            calendar_event_id=state.calendar_event_id,
+            notifications_sent=notifications_sent,
+        )
     except Exception as exc:
         logger.exception("Processing job failed")
-        completed_at = _utc_iso_now()
-        _job_status[job_id] = {
-            "status": "failed",
-            "completed_nodes": [],
-            "errors": [str(exc)],
-            "meeting_id": None,
-            "started_at": job_started_at,
-            "completed_at": completed_at,
-            "duration_ms": None,
-            "node_timings": _job_status.get(job_id, {}).get("node_timings", {}),
-        }
+        await update_processing_job(
+            job_id,
+            status="failed",
+            completed_nodes=[],
+            errors=[str(exc)],
+            completed_at=datetime.now(timezone.utc),
+        )
     finally:
         try:
             if os.path.exists(payload.audio_file_path):
@@ -195,26 +196,22 @@ async def process_meeting(request: ProcessMeetingRequest, background_tasks: Back
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file not found")
 
     job_id = str(uuid.uuid4())
-    _job_status[job_id] = {
-        "status": "processing",
-        "completed_nodes": [],
-        "errors": [],
-        "meeting_id": None,
-        "started_at": _utc_iso_now(),
-        "completed_at": None,
-        "duration_ms": None,
-        "node_timings": {},
-    }
     background_tasks.add_task(_process_job, job_id, request)
     return {"job_id": job_id, "message": "Meeting processing started.", "status": "processing"}
 
 
 @router.get("/meetings/status/{job_id}", tags=["meetings"])
 async def get_processing_status(job_id: str):
-    if job_id not in _job_status:
+    """Return the current processing job status from the database."""
+    job = await get_processing_job(job_id)
+    if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
-    return _job_status[job_id]
+    return job
 
+
+# =============================================================================
+# MEETINGS
+# =============================================================================
 
 @router.get("/meetings", response_model=list[MeetingListItem], tags=["meetings"])
 async def list_meetings(limit: int = 20, offset: int = 0, db: AsyncSession = Depends(get_db)):
@@ -305,27 +302,149 @@ async def delete_meeting(meeting_id: str, db: AsyncSession = Depends(get_db)):
     return {"deleted": True, "meeting_id": meeting_id}
 
 
-async def _log_send(db: AsyncSession, meeting_id: str, channel: str):
-    db.add(NotificationLog(meeting_id=meeting_id, type=channel, status="sent", detail=f"Sent via {channel}"))
-    await db.flush()
-
+# =============================================================================
+# MANUAL SEND — live tool integrations
+# =============================================================================
 
 @router.post("/meetings/{meeting_id}/send/email", tags=["meetings"])
 async def send_email(meeting_id: str, db: AsyncSession = Depends(get_db)):
-    await _log_send(db, meeting_id, "email")
-    return {"message": "Email dispatch simulated", "sent": 1, "failed": 0}
+    """Send personalised emails to all participants who have email addresses stored."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    action_items_rows = (
+        await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+    ).scalars().all()
+    participants = (
+        await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+    ).scalars().all()
+
+    # Build {name: email} map — only participants with stored email addresses.
+    participant_emails: dict[str, str] = {
+        p.name: p.email
+        for p in participants
+        if p.email
+    }
+
+    if not participant_emails:
+        return {
+            "message": "No participant emails configured. Update participant emails first.",
+            "sent": 0,
+            "failed": 0,
+        }
+
+    # Convert ORM rows → Pydantic ActionItem models expected by the tool.
+    from models.schemas import ActionItem as ActionItemSchema, Priority
+    action_items = [
+        ActionItemSchema(
+            description=i.description,
+            owner=i.owner,
+            due_date=i.due_date,
+            priority=Priority(i.priority),
+        )
+        for i in action_items_rows
+    ]
+
+    result = await send_email_for_meeting(
+        meeting_id=meeting_id,
+        meeting_title=meeting.title,
+        short_summary=meeting.short_summary,
+        all_action_items=action_items,
+        participant_emails=participant_emails,
+    )
+    return {
+        "message": f"Email dispatch complete — sent: {result['sent']}, failed: {result['failed']}",
+        "sent": result["sent"],
+        "failed": result["failed"],
+    }
 
 
 @router.post("/meetings/{meeting_id}/send/slack", tags=["meetings"])
 async def send_slack(meeting_id: str, db: AsyncSession = Depends(get_db)):
-    await _log_send(db, meeting_id, "slack")
-    return {"message": "Slack dispatch simulated", "sent": 1, "failed": 0}
+    """Post meeting summary and action items to the configured Slack channel."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    action_items_rows = (
+        await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+    ).scalars().all()
+    decisions_count = (
+        await db.execute(select(func.count(Decision.id)).where(Decision.meeting_id == meeting_id))
+    ).scalar_one()
+    participants = (
+        await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+    ).scalars().all()
+
+    from models.schemas import ActionItem as ActionItemSchema, Priority
+    action_items = [
+        ActionItemSchema(
+            description=i.description,
+            owner=i.owner,
+            due_date=i.due_date,
+            priority=Priority(i.priority),
+        )
+        for i in action_items_rows
+    ]
+
+    result = await send_slack_for_meeting(
+        meeting_id=meeting_id,
+        meeting_title=meeting.title,
+        short_summary=meeting.short_summary,
+        action_items=action_items,
+        participants=[p.name for p in participants],
+        decisions_count=int(decisions_count or 0),
+        duration_minutes=meeting.duration_minutes,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Slack dispatch failed: {result['error']}",
+        )
+    return {"message": "Slack notification sent successfully.", "sent": 1, "failed": 0}
 
 
 @router.post("/meetings/{meeting_id}/send/jira", tags=["meetings"])
 async def send_jira(meeting_id: str, db: AsyncSession = Depends(get_db)):
-    await _log_send(db, meeting_id, "jira")
-    return {"message": "Jira dispatch simulated", "sent": 1, "failed": 0, "created": []}
+    """Create Jira tickets for all action items in this meeting."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    action_items_rows = (
+        await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+    ).scalars().all()
+
+    if not action_items_rows:
+        return {"message": "No action items found for this meeting.", "sent": 0, "failed": 0, "created": []}
+
+    from models.schemas import ActionItem as ActionItemSchema, Priority
+    action_items = [
+        ActionItemSchema(
+            description=i.description,
+            owner=i.owner,
+            due_date=i.due_date,
+            priority=Priority(i.priority),
+        )
+        for i in action_items_rows
+    ]
+
+    try:
+        result = await send_jira_for_meeting(
+            meeting_id=meeting_id,
+            action_items=action_items,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+    return {
+        "message": f"Jira dispatch complete — created: {len(result['created'])}, failed: {len(result['failed'])}",
+        "sent": len(result["created"]),
+        "failed": len(result["failed"]),
+        "created": result["created"],
+    }
 
 
 @router.post("/meetings/{meeting_id}/send/calendar", tags=["meetings"])
@@ -334,13 +453,44 @@ async def send_calendar(
     days_from_now: int = Query(7, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
 ):
-    await _log_send(db, meeting_id, "calendar")
+    """Book a follow-up Google Calendar event for all participants."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    participants = (
+        await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+    ).scalars().all()
+
+    participant_names = [p.name for p in participants]
+    participant_emails = [p.email for p in participants if p.email]
+
+    result = await send_calendar_for_meeting(
+        meeting_id=meeting_id,
+        meeting_title=meeting.title,
+        participants=participant_names,
+        emails=participant_emails,
+        days_from_now=days_from_now,
+    )
+
+    if result.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Calendar dispatch failed: {result['error']}",
+        )
+
     return {
-        "message": f"Calendar dispatch simulated for {days_from_now} day(s) from now",
+        "message": f"Calendar follow-up booked for {days_from_now} day(s) from now.",
         "sent": 1,
         "failed": 0,
+        "event_id": result.get("event_id"),
+        "event_url": result.get("event_url"),
     }
 
+
+# =============================================================================
+# AGENT QUERY (conversational)
+# =============================================================================
 
 @router.post("/query", response_model=AgentQueryResponse, tags=["agent"])
 async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get_db)):

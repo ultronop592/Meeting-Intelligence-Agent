@@ -59,6 +59,18 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _run_async(coro) -> None:
+    """Run an async coroutine safely from sync/thread context.
+    Uses create_task if a loop is already running, otherwise asyncio.run().
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        asyncio.run(coro)
+
+
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
@@ -254,7 +266,7 @@ def book_calendar(state: AgentState) -> dict:
 
         # Log to notifications_log
         if state.meeting_id:
-            asyncio.run(log_notification(
+            _run_async(log_notification(
                 meeting_id=state.meeting_id,
                 notification_type="calendar",
                 status="sent",
@@ -270,7 +282,7 @@ def book_calendar(state: AgentState) -> dict:
         error = f"Calendar configuration error: {e}"
         logger.error(error)
         if state.meeting_id:
-            asyncio.run(log_notification(
+            _run_async(log_notification(
                 meeting_id=state.meeting_id,
                 notification_type="calendar",
                 status="failed",
@@ -285,7 +297,7 @@ def book_calendar(state: AgentState) -> dict:
         error = f"Google Calendar API error: {e.status_code} — {e.reason}"
         logger.error(error)
         if state.meeting_id:
-            asyncio.run(log_notification(
+            _run_async(log_notification(
                 meeting_id=state.meeting_id,
                 notification_type="calendar",
                 status="failed",
