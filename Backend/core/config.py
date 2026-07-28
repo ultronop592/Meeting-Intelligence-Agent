@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # --- File upload ---------------------------------------------------------
     max_upload_size_mb: int = 1024
     upload_dir:         str = "/tmp/meeting-agent-uploads"
+
+    # --- Audio chunking (for files > Groq 25 MB transcription limit) ---------
+    # Duration of each chunk in seconds. 600 s = 10 min.
+    # At 128 kbps MP3: 10 min ≈ 9.6 MB — well under Groq's 25 MB limit.
+    # Requires ffmpeg to be installed on the system PATH.
+    audio_chunk_duration_seconds: int = 600
  
     # --- Computed properties -------------------------------------------------
     @property
