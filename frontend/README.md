@@ -1,27 +1,24 @@
 # Meeting Intelligence Agent Frontend
 
-Next.js App Router frontend for the Meeting Intelligence Agent backend.
+Next.js 15 App Router frontend for the Meeting Intelligence Agent backend.
 
 ## Features
 
-- Dashboard and meetings workspace
-- Audio upload and processing workflow
-- Typed API client with normalized errors
-- React Query hooks for list/detail/mutation flows
-- Agent chat UI powered by backend `/query` endpoint
-- Defensive loading, empty, and error states
-- Vitest tests for API client behavior
+- **Dashboard and Meetings Workspace**: Complete UI for reviewing meetings, action items, decisions, attendees, and notification logs.
+- **Interactive Audio Player & Transcript Sync**: Custom audio player with scrubber, variable speed controls (`0.75x`–`2.0x`), and interactive speaker-line highlighting. Clicking any transcript line seeks the audio directly to that timestamp.
+- **Audio Upload & Processing Workflow**: Drag-and-drop file upload with real-time processing timeline polling.
+- **Smart Conversational Q&A**: In-page Chat UI powered by the backend Groq Llama 3.3 RAG engine via `/query`.
+- **Integrations Dispatch**: Manual 1-click dispatch controls for Slack, Jira, SendGrid Email, and Google Calendar.
+- **Typed API Client**: Built with TanStack React Query v5 and Zod schema validations.
+- **Vitest & Next.js Build Tests**: Clean TypeScript type-safety and unit testing setup.
 
 ## Environment
 
 Create `frontend/.env.local`:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_UPLOAD_DIR_HINT=/tmp/meeting-agent-uploads
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
-
-`NEXT_PUBLIC_UPLOAD_DIR_HINT` should match backend `UPLOAD_DIR` so the process request can compose `audio_file_path` correctly.
 
 ## Local Run
 
@@ -35,11 +32,11 @@ Open `http://localhost:3000`.
 ## Scripts
 
 ```bash
-npm run dev
-npm run lint
-npm run test
-npm run build
-npm run start
+npm run dev     # Boot Next.js dev server
+npm run lint    # Run ESLint
+npm run test    # Run Vitest test suite
+npm run build   # Compile Next.js production build
+npm run start   # Run production build server
 ```
 
 ## Backend Endpoints Used
@@ -50,6 +47,7 @@ npm run start
 - `GET /meetings/status/{job_id}`
 - `GET /meetings`
 - `GET /meetings/{meeting_id}`
+- `GET /meetings/{meeting_id}/audio`
 - `PATCH /meetings/{meeting_id}/action-items/{item_id}`
 - `PATCH /meetings/{meeting_id}/participants/{participant_id}?email=...`
 - `DELETE /meetings/{meeting_id}`
@@ -61,5 +59,4 @@ npm run start
 
 ## Notes
 
-- If the backend base path changes in the future (for example, adding `/api` prefix), only update `NEXT_PUBLIC_API_BASE_URL`.
-- CORS for local frontend origins is configured in `Backend/api/main.py`.
+- CORS for local frontend origins (`http://localhost:3000`, `http://localhost:3001`) is pre-configured in `Backend/api/main.py`.
