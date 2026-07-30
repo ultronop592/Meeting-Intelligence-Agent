@@ -3,12 +3,30 @@ agents/transcription.py  — Node 1 of the LangGraph pipeline.
 
 WHAT IT DOES
 ------------
-Transcribes an audio recording to plain text using Groq Whisper (whisper-large-v3).
+Transcribes an audio recording to plain text (or a speaker-labelled transcript)
+using Groq Whisper (whisper-large-v3).
+
+SPEAKER DIARIZATION (optional)
+-------------------------------
+When HF_TOKEN is configured and pyannote.audio is installed, Node 1 also:
+  1. Runs pyannote speaker-diarization-3.1 to get speaker turn segments.
+  2. Requests Groq Whisper in ``verbose_json`` mode to obtain timed segments.
+  3. Merges both to produce a speaker-labelled transcript stored in
+     ``AgentState.diarized_transcript``:
+
+       SPEAKER_00: Hello everyone, let's get started with the standup.
+       SPEAKER_01: Sure, I'll share my updates from last week.
+       SPEAKER_00: Great, please go ahead.
+
+  The plain ``transcript`` field is always populated (for backward compat).
+  ``diarized_transcript`` is only populated when diarization succeeds.
+  Downstream nodes (summarise, extract) prefer diarized_transcript when
+  it is available, giving much better action-item ownership attribution.
 
 SINGLE-FILE LIMIT HANDLING
 --------------------------
 Groq's Whisper API limits each request to 25 MB.
-For files that exceed this limit the module now automatically:
+For files that exceed this limit the module automatically:
   1. Detects that ffmpeg is available on PATH.
   2. Splits the audio into equal-duration chunks (default: 10 min each)
      using the ffmpeg segment muxer — no re-encoding, very fast.
@@ -30,6 +48,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 from groq import APIConnectionError, APIError, APITimeoutError, Groq, RateLimitError
 from langsmith import traceable
@@ -93,6 +112,7 @@ def _validate_audio_file(file_path: str) -> Path:
     reraise=True,
 )
 def _call_whisper_api(client: Groq, audio_path: Path) -> str:
+    """Call Whisper and return plain-text transcript."""
     with open(audio_path, "rb") as audio_file:
         response = client.audio.transcriptions.create(
             model=WHISPER_MODEL,
@@ -101,6 +121,37 @@ def _call_whisper_api(client: Groq, audio_path: Path) -> str:
             language="en",
         )
     return str(response)
+
+
+@retry(
+    retry=retry_if_exception_type((APIConnectionError, APITimeoutError, RateLimitError)),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    reraise=True,
+)
+def _call_whisper_verbose(client: Groq, audio_path: Path) -> list[dict]:
+    """Call Whisper in verbose_json mode and return timed segments.
+
+    Each returned segment is a dict with at minimum:
+        {"text": str, "start": float, "end": float}
+    """
+    with open(audio_path, "rb") as audio_file:
+        response = client.audio.transcriptions.create(
+            model=WHISPER_MODEL,
+            file=audio_file,
+            response_format="verbose_json",
+            language="en",
+        )
+    # response.segments: list of dicts with id, start, end, text, ...
+    raw_segments = getattr(response, "segments", None) or []
+    return [
+        {
+            "text":  seg.get("text", ""),
+            "start": float(seg.get("start", 0.0)),
+            "end":   float(seg.get("end", 0.0)),
+        }
+        for seg in raw_segments
+    ]
 
 
 # =============================================================================
@@ -166,18 +217,22 @@ def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
     return chunks
 
 
-def _transcribe_in_chunks(client: Groq, audio_path: Path) -> str:
+def _transcribe_in_chunks(
+    client: Groq,
+    audio_path: Path,
+    want_timed: bool = False,
+) -> tuple[str, list[dict]]:
     """Split *audio_path* into chunks and transcribe each one.
-
-    Chunk transcripts are joined with a single space so the output reads as
-    one continuous document.
 
     Args:
         client:     Authenticated Groq client.
         audio_path: Path to the large audio file (> Groq 25 MB limit).
+        want_timed: If True, collect timed segments (with start/end offsets)
+                    for diarization alignment. If False, plain text only.
 
     Returns:
-        Full merged transcript string.
+        Tuple of (plain_transcript, timed_segments).
+        timed_segments is empty when want_timed=False.
 
     Raises:
         ValueError:  ffmpeg is not installed.
@@ -195,39 +250,66 @@ def _transcribe_in_chunks(client: Groq, audio_path: Path) -> str:
 
     with tempfile.TemporaryDirectory(prefix="meeting_agent_chunks_") as chunk_dir:
         chunks = _split_audio_with_ffmpeg(audio_path, chunk_dir)
-        transcripts: list[str] = []
+        plain_texts: list[str] = []
+        all_timed: list[dict] = []
 
         for i, chunk_path in enumerate(chunks):
             chunk_size_mb = chunk_path.stat().st_size / (1024 * 1024)
+            time_offset = i * CHUNK_DURATION_SECONDS
+
             logger.info(
                 "Transcribing chunk %d/%d | %.2f MB | file=%s",
                 i + 1, len(chunks), chunk_size_mb, chunk_path.name,
             )
 
             try:
-                chunk_text = _call_whisper_api(client, chunk_path).strip()
-                if chunk_text:
-                    transcripts.append(chunk_text)
+                if want_timed:
+                    segs = _call_whisper_verbose(client, chunk_path)
+                    # Apply time offset so segments map to full-file timestamps
+                    for seg in segs:
+                        seg["start"] += time_offset
+                        seg["end"]   += time_offset
+                        if seg["text"].strip():
+                            plain_texts.append(seg["text"].strip())
+                    all_timed.extend(segs)
                 else:
-                    logger.warning("Chunk %d/%d returned empty transcript", i + 1, len(chunks))
+                    text = _call_whisper_api(client, chunk_path).strip()
+                    if text:
+                        plain_texts.append(text)
+
             except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
                 logger.error("Chunk %d/%d transcription failed: %s", i + 1, len(chunks), exc)
-                # Re-raise — caller's except block handles Groq-specific errors
                 raise
 
-        if not transcripts:
+        if not plain_texts:
             raise RuntimeError(
                 "Chunked transcription produced no output. "
                 "All chunks returned empty transcripts."
             )
 
-    merged = " ".join(transcripts)
+    plain = " ".join(plain_texts)
     logger.info(
         "Chunked transcription complete | chunks=%d | words=%d",
-        len(transcripts),
-        len(merged.split()),
+        len(chunks),
+        len(plain.split()),
     )
-    return merged
+    return plain, all_timed
+
+
+# =============================================================================
+# Speaker diarization integration
+# =============================================================================
+
+def _try_diarize(audio_path: Path) -> list[dict]:
+    """Run diarization if available; return empty list on any failure."""
+    try:
+        from tools.diarization_tool import is_diarization_available, run_speaker_diarization
+        if not is_diarization_available():
+            return []
+        return run_speaker_diarization(audio_path)
+    except Exception as exc:
+        logger.warning("Diarization failed, continuing without it: %s", exc)
+        return []
 
 
 # =============================================================================
@@ -237,6 +319,9 @@ def _transcribe_in_chunks(client: Groq, audio_path: Path) -> str:
 @traceable(name="transcribe_audio", tags=["node-1", "whisper"], metadata={"model": WHISPER_MODEL})
 def transcribe_audio(state: AgentState) -> dict:
     """Node 1: transcribe the uploaded audio file to plain text.
+
+    When diarization is available (HF_TOKEN configured, pyannote.audio installed),
+    also produces a speaker-labelled ``diarized_transcript`` in AgentState.
 
     Automatically uses chunked transcription for files that exceed Groq's
     25 MB per-request limit. Requires ffmpeg to be available on PATH.
@@ -252,29 +337,73 @@ def transcribe_audio(state: AgentState) -> dict:
 
     try:
         audio_path = _validate_audio_file(state.audio_file_path)
-        client = Groq(api_key=settings.groq_api_key, timeout=settings.groq_timeout_seconds)
+        client     = Groq(api_key=settings.groq_api_key, timeout=settings.groq_timeout_seconds)
+        file_size  = audio_path.stat().st_size
 
-        file_size = audio_path.stat().st_size
+        # ------------------------------------------------------------------
+        # Step A: Run speaker diarization on the FULL file (before chunking)
+        #         Pyannote handles large files natively — no size limit.
+        # ------------------------------------------------------------------
+        speaker_segments = _try_diarize(audio_path)
+        want_timed       = bool(speaker_segments)  # only pay the verbose cost when needed
+
+        # ------------------------------------------------------------------
+        # Step B: Transcription — chunked for large files, direct for small
+        # ------------------------------------------------------------------
         if file_size > MAX_GROQ_TRANSCRIPTION_BYTES:
-            # Large file — use automatic chunking via ffmpeg
             logger.info(
                 "File size %.2f MB exceeds Groq limit %.0f MB — using chunked transcription",
                 file_size / (1024 * 1024),
                 MAX_GROQ_TRANSCRIPTION_BYTES / (1024 * 1024),
             )
-            transcript = _transcribe_in_chunks(client, audio_path)
+            plain_transcript, timed_segments = _transcribe_in_chunks(
+                client, audio_path, want_timed=want_timed
+            )
         else:
-            # Small file — send directly to Whisper in one request
-            transcript = _call_whisper_api(client, audio_path).strip()
+            if want_timed:
+                timed_segments   = _call_whisper_verbose(client, audio_path)
+                plain_transcript = " ".join(
+                    seg["text"].strip() for seg in timed_segments if seg.get("text")
+                ).strip()
+            else:
+                plain_transcript = _call_whisper_api(client, audio_path).strip()
+                timed_segments   = []
 
-        if not transcript:
+        if not plain_transcript:
             return {"errors": state.errors + ["Whisper returned an empty transcript"]}
 
-        logger.info("Transcription complete | words=%d", len(transcript.split()))
-        return {
-            "transcript": transcript,
+        # ------------------------------------------------------------------
+        # Step C: Merge timed segments with speaker diarization
+        # ------------------------------------------------------------------
+        diarized_transcript: Optional[str] = None
+        if speaker_segments and timed_segments:
+            try:
+                from tools.diarization_tool import format_diarized_transcript
+                diarized_transcript = format_diarized_transcript(timed_segments, speaker_segments)
+                logger.info(
+                    "Diarized transcript built | speakers=%d | lines=%d",
+                    len({s["speaker"] for s in speaker_segments}),
+                    len(diarized_transcript.splitlines()),
+                )
+            except Exception as exc:
+                logger.warning("Failed to build diarized transcript: %s", exc)
+                diarized_transcript = None
+
+        logger.info(
+            "Transcription complete | words=%d | diarized=%s",
+            len(plain_transcript.split()),
+            diarized_transcript is not None,
+        )
+
+        result: dict = {
+            "transcript":      plain_transcript,
+            "speaker_segments": speaker_segments,
             "completed_nodes": state.completed_nodes + ["transcribe_audio"],
         }
+        if diarized_transcript:
+            result["diarized_transcript"] = diarized_transcript
+
+        return result
 
     except ValueError as e:
         return {"errors": state.errors + [f"Audio validation failed: {e}"]}

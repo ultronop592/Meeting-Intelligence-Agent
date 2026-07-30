@@ -112,6 +112,12 @@ class AgentState(BaseModel):
  
     # --- Node outputs --------------------------------------------------------
     transcript:           Optional[str]              = None
+    # Speaker-labelled version of the transcript, e.g.:
+    #   "SPEAKER_00: Hello everyone.\nSPEAKER_01: Let's start with updates."
+    # Only populated when diarization is enabled and HF_TOKEN is configured.
+    diarized_transcript:  Optional[str]              = None
+    # Raw diarization segments: [{"speaker": "SPEAKER_00", "start": 0.0, "end": 5.2}, ...]
+    speaker_segments:     list[dict]                 = Field(default_factory=list)
     extraction:           Optional[ExtractionOutput] = None
     summary:              Optional[MeetingSummary]   = None
     meeting_id:           Optional[str]              = None

@@ -68,6 +68,22 @@ class Settings(BaseSettings):
     # At 128 kbps MP3: 10 min ≈ 9.6 MB — well under Groq's 25 MB limit.
     # Requires ffmpeg to be installed on the system PATH.
     audio_chunk_duration_seconds: int = 600
+
+    # --- Speaker Diarization (optional) --------------------------------------
+    # Identifies WHO spoke WHEN and labels the transcript:
+    #   SPEAKER_00: Hello everyone.
+    #   SPEAKER_01: Let's start with updates.
+    #
+    # Requires:
+    #   1. pip install pyannote.audio  (heavy: ~1 GB model download)
+    #   2. Accept model terms at https://hf.co/pyannote/speaker-diarization-3.1
+    #   3. Accept model terms at https://hf.co/pyannote/segmentation-3.0
+    #   4. Set HF_TOKEN=<your token> in .env
+    #
+    # If hf_token is empty OR pyannote.audio is not installed,
+    # transcription falls back to plain non-diarized text automatically.
+    hf_token:            str  = ""    # HuggingFace access token
+    diarization_enabled: bool = True  # Set False to always skip diarization
  
     # --- Computed properties -------------------------------------------------
     @property

@@ -289,4 +289,4 @@ async def get_processing_job(job_id: str) -> dict | None:
             }
         except Exception as e:
             logger.error("Failed to get processing job %s: %s", job_id, e)
-            return None
+            return None

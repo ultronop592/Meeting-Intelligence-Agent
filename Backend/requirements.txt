@@ -57,3 +57,9 @@ ruff==0.8.6                # Linter + formatter
 #   Windows : winget install ffmpeg
 #   macOS   : brew install ffmpeg
 #   Ubuntu  : sudo apt install ffmpeg
+
+# --- Optional: Speaker Diarization ------------------------------------------
+# Identifies who spoke when in meeting recordings.
+# Heavy install (~1 GB model weights downloaded from HuggingFace on first run).
+#   pip install pyannote.audio
+# Then set HF_TOKEN in .env (see comments in .env for full setup steps).
