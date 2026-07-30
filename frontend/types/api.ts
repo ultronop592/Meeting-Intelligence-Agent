@@ -77,6 +77,8 @@ export type MeetingRow = {
   duration_minutes: number;
   short_summary: string;
   detailed_summary: string;
+  transcript?: string | null;
+  diarized_transcript?: string | null;
   embedding_status: "pending" | "completed" | "failed";
   created_at: string | null;
 };

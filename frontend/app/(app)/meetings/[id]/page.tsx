@@ -13,6 +13,7 @@ import { ChatBubble } from "@/components/chat/chat-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
+import { AudioPlayer } from "@/components/meeting/audio-player";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
 
@@ -262,6 +263,12 @@ export default function MeetingDetailPage() {
           </div>
         ) : data ? (
           <div className="space-y-4">
+            <AudioPlayer
+              audioUrl={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/meetings/${meetingId}/audio`}
+              diarizedTranscript={data.meeting.diarized_transcript}
+              plainTranscript={data.meeting.transcript}
+            />
+
             <div className="rounded-[16px] border border-border bg-surface p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Summary</p>
               <p className="mt-3 text-sm leading-7 text-text-secondary">{data.meeting.detailed_summary}</p>

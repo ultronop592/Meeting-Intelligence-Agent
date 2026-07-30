@@ -137,6 +137,8 @@ async def save_to_database(state: AgentState) -> dict:
                 duration_minutes=state.summary.duration_minutes,
                 short_summary=state.summary.short_summary,
                 detailed_summary=state.summary.detailed_summary,
+                transcript=state.transcript,
+                diarized_transcript=state.diarized_transcript,
                 embedding_status=EmbeddingStatus.PENDING.value,
             )
             session.add(meeting)

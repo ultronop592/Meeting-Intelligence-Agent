@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -488,6 +489,53 @@ async def send_calendar(
     }
 
 
+@router.get("/meetings/{meeting_id}/audio", tags=["meetings"])
+async def stream_meeting_audio(meeting_id: str, db: AsyncSession = Depends(get_db)):
+    """Stream the audio file associated with a meeting for playback in the frontend audio player."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    possible_paths = [
+        os.path.join(settings.upload_dir, meeting.audio_filename),
+    ]
+    if os.path.exists(settings.upload_dir):
+        for fname in os.listdir(settings.upload_dir):
+            if fname.endswith(meeting.audio_filename) or meeting.audio_filename in fname:
+                possible_paths.insert(0, os.path.join(settings.upload_dir, fname))
+
+    found_path = None
+    for path in possible_paths:
+        if os.path.exists(path) and os.path.isfile(path):
+            found_path = path
+            break
+
+    if not found_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audio file for meeting '{meeting.title}' is not available on server disk.",
+        )
+
+    ext = Path(found_path).suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".webm": "audio/webm",
+        ".mp4": "video/mp4",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=found_path,
+        media_type=media_type,
+        filename=meeting.audio_filename,
+        headers={"Accept-Ranges": "bytes"},
+    )
+
+
 # =============================================================================
 # AGENT QUERY (conversational)
 # =============================================================================
@@ -530,6 +578,49 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
         )
     ).scalars().all()
 
+    # Try Groq Llama 3.3 for intelligent LLM Q&A
+    if settings.groq_api_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=settings.groq_api_key, timeout=20)
+            
+            context_blocks = [
+                f"MEETING TITLE: {target_meeting.title}",
+                f"SHORT SUMMARY: {target_meeting.short_summary}",
+                f"DETAILED SUMMARY: {target_meeting.detailed_summary}",
+                "PARTICIPANTS: " + (", ".join(p.name for p in participants) if participants else "None identified"),
+                "ACTION ITEMS:\n" + ("\n".join(f"- {item.description} (Owner: {item.owner}, Priority: {item.priority}, Status: {item.status})" for item in action_items) if action_items else "None"),
+                "DECISIONS:\n" + ("\n".join(f"- {d.description} (Context: {d.context})" for d in decisions) if decisions else "None"),
+            ]
+            if getattr(target_meeting, "diarized_transcript", None):
+                context_blocks.append("SPEAKER TRANSCRIPT:\n" + str(target_meeting.diarized_transcript)[:4000])
+            elif getattr(target_meeting, "transcript", None):
+                context_blocks.append("TRANSCRIPT:\n" + str(target_meeting.transcript)[:4000])
+
+            system_prompt = (
+                "You are an AI assistant answering questions about a meeting recording. "
+                "Use the provided meeting context to answer the user's question accurately, concisely, and naturally. "
+                "If the answer is not in the context, state that clearly based on the meeting record."
+            )
+            user_content = "CONTEXT:\n\n" + "\n\n".join(context_blocks) + f"\n\nQUESTION: {question}"
+
+            completion = await asyncio.to_thread(
+                client.chat.completions.create,
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.2,
+                max_tokens=500,
+            )
+            answer = completion.choices[0].message.content.strip()
+            if answer:
+                return AgentQueryResponse(answer=answer, sources=[f"meeting:{target_meeting.id}"])
+        except Exception as exc:
+            logger.warning("Groq Llama 3.3 query failed, falling back to keyword matcher: %s", exc)
+
+    # Fallback to rule-based keyword matcher if Groq API key is missing or fails
     lower_question = question.lower()
     if (
         "how many people" in lower_question

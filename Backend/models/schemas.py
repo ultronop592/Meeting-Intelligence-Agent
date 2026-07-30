@@ -147,6 +147,8 @@ class MeetingRow(BaseModel):
     duration_minutes: int
     short_summary:    str
     detailed_summary: str
+    transcript:          Optional[str]       = None
+    diarized_transcript: Optional[str]       = None
     embedding_status: EmbeddingStatus     = EmbeddingStatus.PENDING
     created_at:       Optional[datetime]  = None
  
