@@ -33,6 +33,8 @@ from models.schemas import (
     MeetingRow,
     NotificationLogRow,
     ParticipantRow,
+    MemorySearchRequest,
+    MemorySearchResponse,
     ProcessMeetingRequest,
     UpdateActionItemRequest,
 )
@@ -599,6 +601,22 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
             elif getattr(target_meeting, "transcript", None):
                 context_blocks.append("TRANSCRIPT:\n" + str(target_meeting.transcript)[:4000])
 
+            # --- Cross-Meeting Vector Memory RAG Search -----------------------
+            try:
+                from core.memory_service import memory_service
+                mem_matches = await memory_service.search_memory(db, question, top_k=2, exclude_meeting_id=target_meeting.id)
+                if mem_matches:
+                    mem_block = ["HISTORICAL CROSS-MEETING MEMORY CONTEXT:"]
+                    for m_match in mem_matches:
+                        mem_block.append(f"- Past Meeting: \"{m_match['title']}\" ({m_match['date']}) | Summary: {m_match['short_summary']}")
+                        if m_match.get("action_items"):
+                            items_str = "; ".join(f"{i['description']} (owner: {i['owner']})" for i in m_match["action_items"][:3])
+                            mem_block.append(f"  Action Items: {items_str}")
+                    context_blocks.append("\n".join(mem_block))
+            except Exception as mem_exc:
+                logger.warning("Memory RAG lookup warning: %s", mem_exc)
+            # -----------------------------------------------------------------
+
             system_prompt = (
                 "You are an AI assistant answering questions about a meeting recording. "
                 "Use the provided meeting context to answer the user's question accurately, concisely, and naturally. "
@@ -739,6 +757,22 @@ async def query_agent_stream(payload: AgentQueryRequest, db: AsyncSession = Depe
     elif getattr(target_meeting, "transcript", None):
         context_blocks.append("TRANSCRIPT:\n" + str(target_meeting.transcript)[:4000])
 
+    # --- Cross-Meeting Vector Memory RAG Search -----------------------
+    try:
+        from core.memory_service import memory_service
+        mem_matches = await memory_service.search_memory(db, question, top_k=2, exclude_meeting_id=target_meeting.id)
+        if mem_matches:
+            mem_block = ["HISTORICAL CROSS-MEETING MEMORY CONTEXT:"]
+            for m_match in mem_matches:
+                mem_block.append(f"- Past Meeting: \"{m_match['title']}\" ({m_match['date']}) | Summary: {m_match['short_summary']}")
+                if m_match.get("action_items"):
+                    items_str = "; ".join(f"{i['description']} (owner: {i['owner']})" for i in m_match["action_items"][:3])
+                    mem_block.append(f"  Action Items: {items_str}")
+            context_blocks.append("\n".join(mem_block))
+    except Exception as mem_exc:
+        logger.warning("Memory RAG lookup warning in stream: %s", mem_exc)
+    # -----------------------------------------------------------------
+
     system_prompt = (
         "You are an AI assistant answering questions about a meeting recording. "
         "Use the provided meeting context to answer the user's question accurately, concisely, and naturally. "
@@ -843,4 +877,20 @@ async def query_agent_stream(payload: AgentQueryRequest, db: AsyncSession = Depe
             yield f"data: {json.dumps({'done': True, 'sources': [f'meeting:{target_meeting.id}']})}\n\n"
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+
+@router.post("/memory/search", response_model=MemorySearchResponse, tags=["agent"])
+async def search_memory(payload: MemorySearchRequest, db: AsyncSession = Depends(get_db)):
+    """Search cross-meeting vector memory using semantic similarity.
+
+    Returns relevant past meetings, action items, and decisions matching the query vector.
+    """
+    from core.memory_service import memory_service
+    matches = await memory_service.search_memory(db, payload.query, top_k=payload.top_k)
+    return MemorySearchResponse(
+        query=payload.query,
+        results_count=len(matches),
+        matches=matches,
+    )
+
 

@@ -271,3 +271,16 @@ class AgentQueryResponse(BaseModel):
     """Response from POST /query"""
     answer: str
     sources: list[str] = Field(default_factory=list)
+
+
+class MemorySearchRequest(BaseModel):
+    """POST /memory/search"""
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(default=3, ge=1, le=10)
+
+
+class MemorySearchResponse(BaseModel):
+    """Response from POST /memory/search"""
+    query: str
+    results_count: int
+    matches: list[dict] = Field(default_factory=list)

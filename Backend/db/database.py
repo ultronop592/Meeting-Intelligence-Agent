@@ -188,7 +188,14 @@ async def save_to_database(state: AgentState) -> dict:
             # If ANY insert fails, ALL inserts are rolled back — data stays clean
             await session.commit()
             logger.info("All data committed to Neon successfully.")
- 
+
+            # --- 6. Index Meeting into Vector Memory Layer (RAG) --------------
+            try:
+                from core.memory_service import memory_service
+                await memory_service.index_meeting(session, meeting_id)
+            except Exception as mem_err:
+                logger.warning("Memory indexing warning for meeting %s: %s", meeting_id, mem_err)
+
             return {
                 "meeting_id":      meeting_id,
                 "completed_nodes": state.completed_nodes + ["save_to_database"],
