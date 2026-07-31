@@ -296,6 +296,18 @@ async def test_query_action_items(async_client, seeded_meeting, seeded_action_it
     assert "Write unit tests" in resp.json()["answer"]
 
 
+@pytest.mark.asyncio
+async def test_query_stream_endpoint(async_client, seeded_meeting, seeded_participant):
+    resp = await async_client.post(
+        "/query/stream",
+        json={"question": "Who attended the meeting?", "meeting_id": seeded_meeting.id},
+    )
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+
+
+
 # =============================================================================
 # Upload endpoint
 # =============================================================================

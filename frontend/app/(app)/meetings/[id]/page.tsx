@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMeetingDetail } from "@/lib/hooks/use-meeting-detail";
-import { useAgentChat } from "@/lib/hooks/use-agent-chat";
+import { useAgentChatStream } from "@/lib/hooks/use-agent-chat";
 import { meetingApi } from "@/lib/api/meetings";
 import { toUserErrorMessage } from "@/lib/api/client";
 import type { ActionItemStatus, NotificationLogRow } from "@/types/api";
@@ -23,9 +23,9 @@ export default function MeetingDetailPage() {
   const queryClient = useQueryClient();
   const meetingId = typeof params?.id === "string" ? params.id : null;
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
-  const chatMutation = useAgentChat();
+  const { streamQuery, isStreaming } = useAgentChatStream();
   const [message, setMessage] = useState("");
-  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string }[]>([]);
+  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean }[]>([]);
   const [daysFromNow, setDaysFromNow] = useState(7);
   const [savingActionItemId, setSavingActionItemId] = useState<string | null>(null);
   const [savingParticipantId, setSavingParticipantId] = useState<string | null>(null);
@@ -105,18 +105,61 @@ export default function MeetingDetailPage() {
 
   const sendMessage = async () => {
     const content = message.trim();
-    if (!content || !meetingId) return;
-    setThread((prev) => [...prev, { role: "user", message: content }]);
+    if (!content || !meetingId || isStreaming) return;
+
+    setThread((prev) => [
+      ...prev,
+      { role: "user", message: content },
+      { role: "assistant", message: "", isStreaming: true },
+    ]);
     setMessage("");
 
     try {
-      const response = await chatMutation.mutateAsync({
-        question: content,
-        meeting_id: meetingId,
-      });
-      setThread((prev) => [...prev, { role: "assistant", message: response.answer }]);
+      await streamQuery(
+        { question: content, meeting_id: meetingId },
+        (chunk) => {
+          setThread((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                message: updated[lastIndex].message + chunk,
+              };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setThread((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                isStreaming: false,
+              };
+            }
+            return updated;
+          });
+        }
+      );
     } catch {
       toast.error("Agent is unavailable. Try again shortly.");
+      setThread((prev) => {
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+        if (lastIndex >= 0 && updated[lastIndex].role === "assistant" && !updated[lastIndex].message) {
+          updated[lastIndex] = {
+            role: "assistant",
+            message: "Sorry, I couldn't process your request right now.",
+            isStreaming: false,
+          };
+        } else if (lastIndex >= 0) {
+          updated[lastIndex].isStreaming = false;
+        }
+        return updated;
+      });
     }
   };
 
@@ -466,10 +509,14 @@ export default function MeetingDetailPage() {
             </div>
           ) : (
             thread.map((entry, index) => (
-              <ChatBubble key={index} role={entry.role} message={entry.message} />
+              <ChatBubble
+                key={index}
+                role={entry.role}
+                message={entry.message}
+                isStreaming={entry.isStreaming}
+              />
             ))
           )}
-          {chatMutation.isPending ? <ChatBubble role="assistant" message="Thinking..." /> : null}
         </div>
         <div className="flex gap-2 border-t border-border pt-3">
           <Input
@@ -482,9 +529,10 @@ export default function MeetingDetailPage() {
                 void sendMessage();
               }
             }}
+            disabled={isStreaming}
           />
-          <Button onClick={() => void sendMessage()} disabled={chatMutation.isPending}>
-            Send
+          <Button onClick={() => void sendMessage()} disabled={isStreaming || !message.trim()}>
+            {isStreaming ? "Thinking..." : "Send"}
           </Button>
         </div>
       </div>

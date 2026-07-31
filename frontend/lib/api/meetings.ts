@@ -177,4 +177,89 @@ export const meetingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  queryAgentStream: async (
+    payload: AgentQueryRequest,
+    onChunk: (chunk: string) => void,
+    onDone?: (sources: string[]) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/query/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let message = "";
+      try {
+        const parsed = JSON.parse(errorText);
+        message = parsed.detail || parsed.message;
+      } catch {
+        message = errorText;
+      }
+      throw new Error(message || `Streaming query failed (${response.status})`);
+    }
+
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data: ")) {
+          const jsonStr = trimmed.replace(/^data:\s*/, "");
+          try {
+            const data = JSON.parse(jsonStr);
+            if (data.chunk) {
+              onChunk(data.chunk);
+            }
+            if (data.done && onDone && data.sources) {
+              onDone(data.sources);
+            }
+          } catch {
+            // ignore partial JSON parse errors
+          }
+        }
+      }
+    }
+
+    if (buffer.trim().startsWith("data: ")) {
+      const jsonStr = buffer.trim().replace(/^data:\s*/, "");
+      try {
+        const data = JSON.parse(jsonStr);
+        if (data.chunk) {
+          onChunk(data.chunk);
+        }
+        if (data.done && onDone && data.sources) {
+          onDone(data.sources);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  },
 };
+

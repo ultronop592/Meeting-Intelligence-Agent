@@ -1,33 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { useAgentChat } from "@/lib/hooks/use-agent-chat";
+import { useAgentChatStream } from "@/lib/hooks/use-agent-chat";
 import { ChatBubble } from "@/components/chat/chat-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function AgentChatPage() {
-  const chatMutation = useAgentChat();
+  const { streamQuery, isStreaming } = useAgentChatStream();
   const [message, setMessage] = useState("");
-  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string }[]>([
+  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean }[]>([
     {
       role: "assistant",
       message: "Hi, I am your meeting intelligence agent. Ask anything about your meetings or next steps.",
     },
   ]);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread]);
 
   const sendMessage = async () => {
     const content = message.trim();
-    if (!content) return;
-    setThread((prev) => [...prev, { role: "user", message: content }]);
+    if (!content || isStreaming) return;
+
+    setThread((prev) => [
+      ...prev,
+      { role: "user", message: content },
+      { role: "assistant", message: "", isStreaming: true },
+    ]);
     setMessage("");
 
     try {
-      const response = await chatMutation.mutateAsync({ question: content });
-      setThread((prev) => [...prev, { role: "assistant", message: response.answer }]);
+      await streamQuery(
+        { question: content },
+        (chunk) => {
+          setThread((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                message: updated[lastIndex].message + chunk,
+              };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setThread((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                isStreaming: false,
+              };
+            }
+            return updated;
+          });
+        }
+      );
     } catch {
       toast.error("Agent is unavailable. Try again shortly.");
+      setThread((prev) => {
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+        if (lastIndex >= 0 && updated[lastIndex].role === "assistant" && !updated[lastIndex].message) {
+          updated[lastIndex] = {
+            role: "assistant",
+            message: "Sorry, I couldn't process your request right now.",
+            isStreaming: false,
+          };
+        } else if (lastIndex >= 0) {
+          updated[lastIndex].isStreaming = false;
+        }
+        return updated;
+      });
     }
   };
 
@@ -40,11 +91,14 @@ export default function AgentChatPage() {
 
       <div className="flex-1 space-y-4 overflow-auto py-6">
         {thread.map((entry, index) => (
-          <ChatBubble key={index} role={entry.role} message={entry.message} />
+          <ChatBubble
+            key={index}
+            role={entry.role}
+            message={entry.message}
+            isStreaming={entry.isStreaming}
+          />
         ))}
-        {chatMutation.isPending ? (
-          <ChatBubble role="assistant" message="Thinking..." />
-        ) : null}
+        <div ref={chatBottomRef} />
       </div>
 
       <div className="flex gap-2 border-t border-border pt-4">
@@ -58,11 +112,13 @@ export default function AgentChatPage() {
               void sendMessage();
             }
           }}
+          disabled={isStreaming}
         />
-        <Button onClick={() => void sendMessage()} disabled={chatMutation.isPending}>
-          Send
+        <Button onClick={() => void sendMessage()} disabled={isStreaming || !message.trim()}>
+          {isStreaming ? "Thinking..." : "Send"}
         </Button>
       </div>
     </div>
   );
 }
+
