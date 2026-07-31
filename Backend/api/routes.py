@@ -578,12 +578,14 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
         )
     ).scalars().all()
 
-    # Try Groq Llama 3.3 for intelligent LLM Q&A
+    # Try Groq LLM for intelligent Q&A — model is chosen by the LLM router
     if settings.groq_api_key:
         try:
             from groq import Groq
+            from core.llm_router import llm_router
+
             client = Groq(api_key=settings.groq_api_key, timeout=20)
-            
+
             context_blocks = [
                 f"MEETING TITLE: {target_meeting.title}",
                 f"SHORT SUMMARY: {target_meeting.short_summary}",
@@ -604,9 +606,28 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
             )
             user_content = "CONTEXT:\n\n" + "\n\n".join(context_blocks) + f"\n\nQUESTION: {question}"
 
+            # --- Multi-LLM Routing -------------------------------------------
+            # Route based on question complexity and context size.
+            # Simple keyword lookups (participants, action items, decisions)
+            # use llama-3.1-8b-instant for lower latency and cost.
+            # Complex / analytical questions use llama-3.3-70b-versatile.
+            routing = llm_router.select_model(
+                "query",
+                question=question,
+                context_length=len(user_content),
+            )
+            selected_model = routing.model
+            logger.info(
+                "Q&A routing: model=%s | reason=%s | question_preview=%.60s",
+                selected_model,
+                routing.reason,
+                question,
+            )
+            # -----------------------------------------------------------------
+
             completion = await asyncio.to_thread(
                 client.chat.completions.create,
-                model="llama-3.3-70b-versatile",
+                model=selected_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},

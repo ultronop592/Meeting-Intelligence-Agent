@@ -131,6 +131,9 @@ class AgentState(BaseModel):
     # --- Runtime metadata ----------------------------------------------------
     errors:          list[str] = Field(default_factory=list)
     completed_nodes: list[str] = Field(default_factory=list)
+    # Tracks the last Groq model selected by LLMRouter (e.g. "llama-3.1-8b-instant").
+    # Updated by extraction and summary nodes on each run.
+    llm_model_used:  Optional[str] = None
  
     class Config:
         arbitrary_types_allowed = True

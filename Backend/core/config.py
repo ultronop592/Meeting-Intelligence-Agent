@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     groq_api_key: str
     groq_timeout_seconds: int = 120
     groq_transcription_max_mb: int = 24
+
+    # --- Multi-LLM Routing ---------------------------------------------------
+    # Fast/cheap model: used for short transcripts, compact summaries, and
+    # simple Q&A keyword lookups.  Override via LLM_FAST_MODEL in .env.
+    llm_fast_model: str = "llama-3.1-8b-instant"
+    # Powerful model: used for long/complex transcripts and analytical Q&A.
+    # Override via LLM_POWERFUL_MODEL in .env.
+    llm_powerful_model: str = "llama-3.3-70b-versatile"
+    # Transcript word count cutoff: transcripts with fewer words use the fast
+    # model for extraction.  Override via LLM_ROUTING_WORD_THRESHOLD in .env.
+    llm_routing_word_threshold: int = 3000
  
     # --- Neon (Postgres) -----------------------------------------------------
     database_url:      str   # async  URL  — postgresql+asyncpg://...

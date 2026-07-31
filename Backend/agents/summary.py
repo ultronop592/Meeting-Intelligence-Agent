@@ -7,12 +7,13 @@ from pydantic import ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from core.config import settings
+from core.llm_router import llm_router
 from models.schemas import AgentState, MeetingSummary
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_MODEL = "llama-3.3-70b-versatile"
 PROMPT_VERSION = "v1"
+
 
 _SYSTEM_PROMPT_TEMPLATE = """\
 You are a professional meeting analyst. Create a structured summary from the transcript and extracted signals.
@@ -50,9 +51,9 @@ def _build_user_message(state: AgentState) -> str:
     wait=wait_exponential(multiplier=1, min=2, max=8),
     reraise=True,
 )
-def _call_summary_llm(client: Groq, system_prompt: str, user_message: str) -> str:
+def _call_summary_llm(client: Groq, system_prompt: str, user_message: str, model: str) -> str:
     response = client.chat.completions.create(
-        model=SUMMARY_MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -64,10 +65,11 @@ def _call_summary_llm(client: Groq, system_prompt: str, user_message: str) -> st
     return response.choices[0].message.content or ""
 
 
+
 @traceable(
     name="generate_summary",
     tags=["node-3", "llm", f"prompt-{PROMPT_VERSION}"],
-    metadata={"model": SUMMARY_MODEL, "prompt_version": PROMPT_VERSION},
+    metadata={"prompt_version": PROMPT_VERSION},
 )
 def generate_summary(state: AgentState) -> dict:
     logger.info("Node 3 - generate_summary")
@@ -77,11 +79,20 @@ def generate_summary(state: AgentState) -> dict:
     if not settings.groq_api_key:
         return {"errors": state.errors + ["GROQ_API_KEY is not set"]}
 
+    # --- Multi-LLM Routing ---------------------------------------------------
+    # Summary always uses the fast model — input is compact pre-extracted JSON
+    # (action items, decisions, topics) rather than the raw transcript, so the
+    # 8b model has more than enough capacity for high-quality structured output.
+    routing = llm_router.select_model("summary")
+    selected_model = routing.model
+    # -------------------------------------------------------------------------
+
     try:
         raw_json = _call_summary_llm(
             Groq(api_key=settings.groq_api_key),
             _get_system_prompt(),
             _build_user_message(state),
+            selected_model,
         )
         if not raw_json:
             return {"errors": state.errors + ["Groq returned an empty summary response"]}
@@ -89,6 +100,7 @@ def generate_summary(state: AgentState) -> dict:
         summary = MeetingSummary.model_validate_json(raw_json)
         return {
             "summary": summary,
+            "llm_model_used": selected_model,
             "completed_nodes": state.completed_nodes + ["generate_summary"],
         }
     except ValidationError as e:
@@ -103,3 +115,4 @@ def generate_summary(state: AgentState) -> dict:
         return {"errors": state.errors + ["Could not connect to Groq during summary generation"]}
     except APIError as e:
         return {"errors": state.errors + [f"Groq API error during summary generation: {e}"]}
+
