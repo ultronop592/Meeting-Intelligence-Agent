@@ -1,55 +1,67 @@
 # Meeting Intelligence Agent 🎙️🤖
 
-Meeting Intelligence Agent is a professional full-stack application designed to ingest meeting audio recordings, run them through an agentic workflow to transcribe and extract structured information, persist records in Neon Postgres, and automatically synchronize tasks and schedules across Jira, Google Calendar, Slack, and email.
+> **Version 2.0.0** · LangGraph Multi-Agent Pipeline · Neon Postgres + pgvector RAG · Dynamic Multi-LLM Routing · Groq Whisper + Llama 3.3/3.1 · SSE Streaming Q&A · Next.js 15 Frontend
+
+**Meeting Intelligence Agent** is a production-grade full-stack application designed to ingest meeting audio recordings of any size, run them through an agentic multi-stage pipeline to transcribe and extract structured intelligence, index records into a cross-meeting vector memory layer, and automatically synchronize tasks and schedules across Jira, Google Calendar, Slack, and email.
 
 ---
 
 ## 🌟 Key Features
 
-*   **Multi-Agent Coordination (LangGraph)**: An agent pipeline manages transcription, speaker diarization, structured entity extraction, summarization, and database serialization, followed by auto-integration steps.
-*   **Automatic Audio Chunking (FFmpeg)**: Handles single audio files of any size. Files exceeding Groq's 25MB Whisper limit are automatically split into 10-minute lossless chunks using FFmpeg's stream-copy muxer before transcription.
-*   **Speaker Diarization (PyAnnote 3.1)**: Identifies and labels speakers (`SPEAKER_00`, `SPEAKER_01`) with timestamp alignment for clear action item and decision attribution.
-*   **Interactive Audio Player & Transcript Sync**: Stream meeting audio directly from the backend with seeking, variable playback speeds (`0.75x`–`2.0x`), and synchronized transcript highlighting. Clicking any transcript line jumps the audio to that exact timestamp.
-*   **Smart LLM Q&A Engine (`/query`)**: Powered by Groq Llama 3.3 (`llama-3.3-70b-versatile`) with full meeting context retrieval for natural conversational Q&A. Includes a seamless rule-based keyword fallback.
-*   **Persistent Background Job Tracking**: Job status and intermediate node timings are persisted in a PostgreSQL `processing_jobs` table, surviving server restarts and multi-worker process environments.
-*   **Structured Information Extraction**: Extracts action items, key decisions, participants, and topics with semantic context.
+*   **Multi-Agent Coordination (LangGraph)**: A 7-node directed graph manages audio validation, PyAnnote speaker diarization, Groq Whisper transcription, structured extraction, summarization, vector indexing, database serialization, and multi-channel integration dispatch.
+*   **Dynamic Multi-LLM Routing (`core/llm_router.py`)**: Intelligently routes tasks between Groq models to optimize throughput, latency, and token cost:
+    *   **`llama-3.1-8b-instant`**: Used for compact transcripts (<3,000 words), pre-extracted summary formatting, and simple Q&A keyword queries.
+    *   **`llama-3.3-70b-versatile`**: Deployed for long/complex transcripts and deep analytical multi-turn Q&A reasoning.
+*   **Cross-Meeting Vector Memory RAG (`core/memory_service.py`)**: Computes 768-dimensional normalized dense feature embeddings for each meeting and persists them in Neon Postgres (`pgvector`). Enables cross-meeting context retrieval via `/memory/search` and multi-meeting synthesized answers.
+*   **Real-Time Streaming Q&A SSE (`/query/stream`)**: Interactive chat interface powered by Server-Sent Events (SSE) streaming tokens in real time with a dynamic cursor (`▍`), supported by a rule-based fallback matcher.
+*   **Automatic Audio Chunking (FFmpeg)**: Seamlessly handles audio files of any length. Recordings exceeding Groq's 25MB Whisper limit are automatically segmented into 10-minute lossless chunks using FFmpeg's stream-copy muxer before parallel transcription.
+*   **Speaker Diarization (PyAnnote 3.1)**: Identifies and labels speaker turns (`SPEAKER_00`, `SPEAKER_01`) with timestamp alignment for clear action item and decision attribution.
+*   **Interactive Audio Player & Transcript Sync**: Stream meeting audio directly from the backend with scrubbing, variable speed controls (`0.75x`–`2.0x`), and synchronized transcript line highlighting. Clicking any line jumps audio directly to that exact timestamp.
+*   **Persistent Background Job Tracking**: Job progress, node completion timestamps, error traces, and execution metrics are persisted in a PostgreSQL `processing_jobs` table, surviving server restarts and multi-worker deployment environments.
+*   **Structured Information Extraction**: Extracts action items (with owner, priority, and due date), key decisions, participants, and topics with speaker context.
 *   **Automatic & Manual Integrations**:
-    *   **Jira**: Auto-creates formatted Jira tasks for all identified action items.
+    *   **Jira Cloud**: Creates formatted Jira tickets in Atlassian Document Format (ADF) for identified action items.
     *   **Google Calendar**: Books follow-up meetings via Google Cloud Service Accounts.
-    *   **Slack**: Formats summaries and action items into rich Slack Block Kit cards.
-    *   **SendGrid**: Personalizes individual transactional emails so recipients only receive tasks assigned to *them*.
-*   **Responsive Next.js Frontend**: A modern workspace UI designed for reviewing meeting metadata, listening to synced audio recordings, updating tasks, editing participant emails, and chatting with the conversational agent.
+    *   **Slack**: Posts summary cards formatted with Slack Block Kit UI components.
+    *   **SendGrid**: Sends personalized transactional emails ensuring recipients only receive tasks assigned to them.
+*   **Responsive Next.js 15 Frontend**: Modern workspace UI built with Next.js App Router, React 19, Tailwind CSS, TanStack React Query v5, and Zod schemas.
 
 ---
 
 ## 📂 Project Structure
 
-The project is structured as a monorepo containing two main services:
-
 ```
 ├── Backend/                 # FastAPI + LangGraph + SQLAlchemy service
 │   ├── README.md            # Detailed Backend Developer Guide & Architecture docs
-│   ├── agents/              # Transcription, Extraction, Summary & Storage agents
-│   ├── api/                 # FastAPI routes, audio streaming & middleware
-│   ├── core/                # System configuration and structured logger
-│   ├── db/                  # SQLAlchemy ORM models (ProcessingJob, Meeting, etc.)
-│   ├── graph/               # LangGraph state machine structure
-│   ├── tools/               # Integration connectors (Slack, Google Calendar, Jira, SendGrid, PyAnnote)
-│   └── tests/               # Pytest suite (71 passing unit & integration tests)
+│   ├── agents/              # LangGraph node agents (transcription, extraction, summary)
+│   ├── api/                 # FastAPI routes, file streaming, SSE streaming & middleware
+│   │   ├── main.py          # CORS, GZip, Exception handlers & app lifespan
+│   │   └── routes.py        # API endpoints (/meeting/upload, /query/stream, /memory/search, etc.)
+│   ├── core/                # Core system modules
+│   │   ├── config.py        # Typed settings loader (Pydantic BaseSettings)
+│   │   ├── llm_router.py    # Multi-LLM model routing engine (8B vs 70B)
+│   │   ├── logging.py       # Structlog structured JSON logger
+│   │   └── memory_service.py# Vector embedding generator & pgvector RAG memory search
+│   ├── db/                  # SQLAlchemy ORM models & DB helper functions
+│   ├── graph/               # LangGraph state graph definition & node edge flow
+│   ├── models/              # Pydantic validation schemas & API data contracts
+│   ├── tools/               # External integration connectors (Jira, Slack, Calendar, SendGrid, PyAnnote)
+│   └── tests/               # Pytest automated test suite (71 passing unit & integration tests)
 │
-├── frontend/                # Next.js App Router UI
-│   ├── README.md            # Frontend configuration and components overview
-│   ├── app/                 # App Router pages and client state wrappers
-│   ├── components/          # Reusable UI widgets, AudioPlayer & workspace viewports
-│   ├── lib/                 # Core API Client and React Query hooks
-│   ├── types/               # TypeScript API definitions
-│   └── tests/               # Vitest client-side integration tests
+├── frontend/                # Next.js 15 App Router UI
+│   ├── README.md            # Frontend configuration and component overview
+│   ├── app/                 # App Router pages (meetings workspace, upload, details, chat)
+│   ├── components/          # UI widgets, AudioPlayer, ChatDrawer, PipelineTracker
+│   ├── lib/                 # API Client, custom React Query & SSE hooks
+│   ├── types/               # TypeScript definitions matching Backend Pydantic schemas
+│   └── tests/               # Vitest client testing setup
 │
-├── API_INTEGRATION_MAP.md   # Endpoint contracts mapping backend schemas to frontend hooks
-└── IMPLEMENTATION_NOTES.md  # Architectural assumptions, UX layout, and decisions log
+├── API_INTEGRATION_MAP.md   # Endpoint contracts mapping backend endpoints to frontend hooks
+├── IMPLEMENTATION_NOTES.md  # Architectural decisions, layout specifications & design log
+└── IMPROVEMENT_ROADMAP.md   # Project status snapshot & future phase roadmap (Phases 1–7)
 ```
 
-*For in-depth backend design patterns, schemas, and node specifications, please consult the [Backend Developer Guide](file:///c:/Agentic%20AI%20Project/Backend/README.md).*
+*For in-depth backend architecture and node specifications, consult the [Backend Developer Guide](file:///c:/Agentic%20AI%20Project/Backend/README.md).*
 
 ---
 
@@ -57,69 +69,88 @@ The project is structured as a monorepo containing two main services:
 
 ### Backend
 *   **Framework**: FastAPI (Python 3.10+)
-*   **Agent Flow**: LangGraph, LangChain Core
-*   **Inference APIs**: Groq (`whisper-large-v3`, `llama-3.3-70b-versatile`)
-*   **Diarization & Audio Processing**: PyAnnote.audio 3.1, FFmpeg
+*   **Agent Pipeline**: LangGraph, LangChain Core
+*   **LLM & Speech Engines**: Groq (`whisper-large-v3`, `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+*   **LLM Routing**: Custom `LLMRouter` (`core/llm_router.py`)
+*   **Vector Memory (RAG)**: `MemoryService` (`core/memory_service.py`), Neon Postgres `pgvector`
+*   **Speaker Diarization**: PyAnnote.audio 3.1, FFmpeg
 *   **Database**: Neon Serverless Postgres with `pgvector`
-*   **ORM**: SQLAlchemy v2 (Asynchronous Asyncpg driver + SQLite in-memory for testing)
-*   **Observability**: LangSmith, Structlog (Structured JSON/Console outputs)
-*   **SDKs**: Atlassian Python API, SendGrid API, Slack SDK, Google API Python Client
-*   **Test Runner**: Pytest + pytest-asyncio (71 unit & integration tests)
+*   **ORM**: SQLAlchemy v2 (Asyncpg driver for production, SQLite in-memory for testing)
+*   **Observability & Logs**: LangSmith, Structlog
+*   **Integrations SDKs**: Atlassian Python API, SendGrid API, Slack SDK, Google API Python Client
+*   **Test Suite**: Pytest + pytest-asyncio (71 passing unit & integration tests)
 
 ### Frontend
 *   **Framework**: Next.js 15 (React 19, TypeScript)
-*   **Styles**: Tailwind CSS
-*   **State & Fetching**: TanStack React Query v5
+*   **Styling**: Tailwind CSS
+*   **State & Data Fetching**: TanStack React Query v5
 *   **Form Validation**: Zod, React Hook Form
-*   **Test Suite**: Vitest, React Testing Library
+*   **Testing**: Vitest, React Testing Library
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. System Dependencies (Optional for large audio & diarization)
-*   **FFmpeg**: Required for automatic audio chunking of files >25MB.
+### 1. Prerequisites & System Dependencies
+*   **Python**: 3.10+
+*   **Node.js**: 18+
+*   **FFmpeg**: Required for audio chunking of files >25MB.
     *   Windows: `winget install ffmpeg` or copy `ffmpeg.exe` to `Backend/venv/Scripts/`
     *   macOS: `brew install ffmpeg`
     *   Linux: `sudo apt install ffmpeg`
 
 ### 2. Backend Setup
 
-1.  Navigate to the `Backend` directory, configure a virtual environment, and install dependencies:
+1.  Navigate to `Backend`, create a virtual environment, and install dependencies:
     ```bash
     cd Backend
     python -m venv venv
     
-    # Windows
-    .\venv\Scripts\activate
+    # Windows (PowerShell)
+    .\venv\Scripts\Activate.ps1
     # macOS/Linux
     source venv/bin/activate
 
     pip install -r requirements.txt
     ```
 
-2.  Create `Backend/.env` with required API keys and DB URLs:
+2.  Create `Backend/.env` configuration:
     ```env
     APP_ENV=development
-    SECRET_KEY=generate-a-secure-secret-key
+    SECRET_KEY=your-secure-secret-key
     GROQ_API_KEY=your-groq-api-key
+    
+    # Multi-LLM Model Routing Defaults
+    LLM_FAST_MODEL=llama-3.1-8b-instant
+    LLM_POWERFUL_MODEL=llama-3.3-70b-versatile
+    LLM_ROUTING_WORD_THRESHOLD=3000
+    
+    # Postgres Database URLs
     DATABASE_URL=postgresql+asyncpg://user:pass@host/db?sslmode=require
     DATABASE_URL_SYNC=postgresql+psycopg2://user:pass@host/db?sslmode=require
     
-    # Optional Speaker Diarization
+    # Speaker Diarization (Optional)
     HF_TOKEN=your-huggingface-token
     DIARIZATION_ENABLED=true
+    
+    # Integrations (Optional)
+    SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+    SENDGRID_API_KEY=SG...
+    JIRA_URL=https://yourcompany.atlassian.net
+    JIRA_EMAIL=dev@yourcompany.com
+    JIRA_API_TOKEN=your-jira-token
+    GOOGLE_CALENDAR_CREDENTIALS_JSON='{"type": "service_account", ...}'
     ```
 
-3.  Boot the FastAPI Uvicorn reload server:
+3.  Run the FastAPI backend server:
     ```bash
     uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
     ```
-    *   Swagger documentation is hosted at `http://localhost:8000/docs`.
+    *   Interactive OpenAPI Swagger docs are available at `http://localhost:8000/docs`.
 
 ### 3. Frontend Setup
 
-1.  Navigate to the `frontend` directory and install packages:
+1.  Navigate to `frontend` and install dependencies:
     ```bash
     cd frontend
     npm install
@@ -130,7 +161,7 @@ The project is structured as a monorepo containing two main services:
     NEXT_PUBLIC_API_URL=http://localhost:8000
     ```
 
-3.  Boot the Next.js development server:
+3.  Start the Next.js development server:
     ```bash
     npm run dev
     ```
@@ -140,39 +171,57 @@ The project is structured as a monorepo containing two main services:
 
 ## 🚦 End-to-End Processing Workflow
 
-1.  **Ingestion**: User uploads an audio recording (.mp3, .wav, .m4a, .mp4, etc.) in the frontend dashboard.
-2.  **Streaming Upload**: `POST /meeting/upload` streams the file to the upload directory.
-3.  **Task Queue Trigger**: `POST /meetings/process` starts background job processing, tracking progress in the Postgres `processing_jobs` table.
-4.  **Agent Evaluation**:
-    *   **Node 1 (`transcribe_audio`)**: Runs PyAnnote diarization (if enabled) and Groq Whisper transcription. Large files (>25MB) are automatically split using FFmpeg before Whisper transcription.
-    *   **Node 2 (`extract_information`)**: Groq Llama 3.3 extracts action items, decisions, participants, and topics into structured JSON.
-    *   **Node 3 (`generate_summary`)**: Groq Llama 3.3 generates title, short summary, and detailed narrative.
-    *   **Node 4 (`save_to_database`)**: Writes full meeting record, speaker transcripts, action items, decisions, and participants to PostgreSQL.
-5.  **Integration Sync (Nodes 5–7)**:
-    *   Creates formatted Jira Cloud tickets.
-    *   Schedules Google Calendar follow-up invitations.
+```
+  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+  │ Audio Upload    │ ───► │ Background Job  │ ───► │ Node 1:         │
+  │ (POST /upload)  │      │ Tracking (DB)   │      │ Transcribe      │
+  └─────────────────┘      └─────────────────┘      └────────┬────────┘
+                                                             │
+  ┌─────────────────┐      ┌─────────────────┐               ▼
+  │ Node 4: Save &  │ ◄─── │ Node 3:         │ ◄─── ┌─────────────────┐
+  │ Vector Memory   │      │ Summarize       │      │ Node 2: Extract │
+  └────────┬────────┘      └─────────────────┘      └─────────────────┘
+           │
+           ▼
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ Nodes 5–7: Integration Sync                                      │
+  │ Jira Tickets ──► Google Calendar ──► Slack Cards ──► Email Alerts │
+  └───────────────────────────────────────────────────────────────────┘
+```
+
+1.  **Ingestion**: User uploads a meeting recording (.mp3, .wav, .m4a, .mp4, etc.) via the workspace dashboard.
+2.  **Streaming Upload**: `POST /meeting/upload` streams the file to disk in chunked buffers.
+3.  **Job Enqueue**: `POST /meetings/process` initializes job tracking in `processing_jobs`.
+4.  **Agentic Graph Execution**:
+    *   **`transcribe_audio`**: Runs PyAnnote diarization and Groq Whisper. Files >25MB are chunked with FFmpeg.
+    *   **`extract_information`**: Dynamic router assigns `llama-3.1-8b-instant` or `llama-3.3-70b-versatile` to extract structured JSON entities.
+    *   **`generate_summary`**: Summarization agent produces title, short summary, and detailed summary.
+    *   **`save_to_database`**: Persists meeting details, speaker segments, action items, decisions, and participants to Postgres in a single transaction. Also invokes `MemoryService.index_meeting()` to generate and store 768-dim `pgvector` embeddings.
+5.  **Automated Integrations**:
+    *   Creates Jira Cloud issues.
+    *   Schedules Google Calendar follow-up meetings.
     *   Posts Slack Block Kit summary cards.
-    *   Sends personalized SendGrid transactional emails to participants.
-6.  **Interactive Playback & Q&A**: User reviews meeting details, listens to synchronized audio with active speaker line highlighting, and asks questions via the Groq Llama 3.3 Q&A engine.
+    *   Sends personalized SendGrid emails.
+6.  **Interactive Workspace & Real-Time Q&A**: Users listen to synced audio, update action item statuses, and chat with the AI via `/query/stream` (SSE streaming) with cross-meeting vector memory context.
 
 ---
 
 ## 🧪 Quality and Verification Checks
 
 ### Backend Test Suite
-Run the 71-test automated suite (covers routes, audio chunking, diarization, and LLM Q&A):
+Run the 71-test automated Pytest suite (covers routes, audio chunking, diarization, multi-LLM routing, vector memory, and streaming SSE):
 ```bash
 cd Backend
-pytest
+.\venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-### Frontend Build & Lint
-Run the UI validation suites:
+### Frontend Validation
+Run UI linting, type checks, and Vitest test suites:
 ```bash
 cd frontend
-npm run lint    # ESLint verification
-npm run test    # Vitest testing
-npm run build   # Next.js compilation validation
+npm run lint    # ESLint checking
+npm run test    # Vitest component testing
+npm run build   # Next.js production build compilation check
 ```
 
 ---
