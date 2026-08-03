@@ -92,8 +92,12 @@ agent_graph = build_agent_graph()
 
 
 @traceable(name="run_meeting_agent", tags=["full-pipeline", "langgraph"], metadata={"nodes": 7})
-def run_meeting_agent(audio_file_path: str, audio_filename: str) -> AgentState:
-    initial_state = AgentState(audio_file_path=audio_file_path, audio_filename=audio_filename)
+def run_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | None = None) -> AgentState:
+    initial_state = AgentState(
+        audio_file_path=audio_file_path,
+        audio_filename=audio_filename,
+        user_id=user_id,
+    )
     try:
         final_state_dict: dict[str, Any] = agent_graph.invoke(initial_state)
         return AgentState(**final_state_dict)

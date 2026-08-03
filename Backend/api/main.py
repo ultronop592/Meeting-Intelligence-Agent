@@ -8,6 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from api.auth_routes import auth_router
 from api.routes import router
 from core.config import settings
 from core.logging import setup_logging
@@ -16,6 +21,8 @@ from models.schemas import HealthResponse
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 
 @asynccontextmanager
@@ -42,6 +49,9 @@ app = FastAPI(
     docs_url="/docs" if not settings.is_production else None,
     redoc_url="/redoc" if not settings.is_production else None,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,11 +85,14 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, RateLimitExceeded):
+        return _rate_limit_exceeded_handler(request, exc)
     logger.exception("Unhandled exception during request %s %s", request.method, request.url.path)
     detail = str(exc) if not settings.is_production else "Internal Server Error"
     return JSONResponse(status_code=500, content={"detail": detail, "path": str(request.url.path)})
 
 
+app.include_router(auth_router)
 app.include_router(router)
 
 

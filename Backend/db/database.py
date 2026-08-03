@@ -132,6 +132,7 @@ async def save_to_database(state: AgentState) -> dict:
         try:
             # --- 1. Create the Meeting row -----------------------------------
             meeting = Meeting(
+                user_id=getattr(state, "user_id", None),
                 title=state.summary.title,
                 audio_filename=state.audio_filename or "unknown.mp3",
                 duration_minutes=state.summary.duration_minutes,
@@ -242,11 +243,18 @@ async def log_notification(
 # HELPERS — persistent job state (ProcessingJob table)
 # =============================================================================
 
-async def create_processing_job(job_id: str) -> None:
+async def create_processing_job(job_id: str, user_id: str | None = None) -> None:
     """Insert a new ProcessingJob row in 'processing' state."""
     async with AsyncSessionLocal() as session:
         try:
-            job = ProcessingJob(id=job_id, status="processing", completed_nodes=[], errors=[], node_timings={})
+            job = ProcessingJob(
+                id=job_id,
+                user_id=user_id,
+                status="processing",
+                completed_nodes=[],
+                errors=[],
+                node_timings={},
+            )
             session.add(job)
             await session.commit()
         except Exception as e:

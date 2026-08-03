@@ -14,7 +14,12 @@ pydantic-settings==2.7.0  # Loads .env into typed Settings object
 # --- Web framework -----------------------------------------------------------
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-python-multipart==0.0.20  # Required for audio file uploads
+# --- Security / Authentication ---------------------------------------------
+PyJWT==2.10.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+slowapi==0.1.9
+python-multipart==0.0.20  # Required for audio file uploads and OAuth forms
 
 # --- Database (Neon Postgres) -------------------------------------------------
 sqlalchemy==2.0.36         # ORM — industry standard

@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Rows2, Search, SidebarClose, SidebarOpen, UploadCloud } from "lucide-react";
+import { Bell, LogOut, Rows2, Search, SidebarClose, SidebarOpen, UploadCloud, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/components/providers/auth-provider";
 
 const mobileNav = [
   { href: "/dashboard", label: "Dashboard" },
@@ -25,6 +26,7 @@ type NavbarProps = {
 export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompact, onToggleMobile }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [searchValue, setSearchValue] = useState("");
 
   const submitSearch = (event: React.FormEvent) => {
@@ -37,6 +39,8 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
     const targetBase = pathname?.startsWith("/meetings/") ? pathname : "/meetings";
     router.push(targetBase);
   };
+
+  const userInitial = user?.full_name ? user.full_name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || "U";
 
   return (
     <div
@@ -98,6 +102,28 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
           <Button variant="ghost" size="sm" aria-label="Notifications">
             <Bell className="h-4 w-4" />
           </Button>
+
+          {/* User Profile & Logout */}
+          {user && (
+            <div className="flex items-center gap-2 border-l border-border pl-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent border border-accent/30">
+                {userInitial}
+              </div>
+              <span className="hidden text-xs font-medium text-text-secondary lg:inline-block max-w-[140px] truncate">
+                {user.full_name || user.email}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={logout}
+                title="Sign Out"
+                aria-label="Sign Out"
+                className="h-8 w-8 p-0 text-text-tertiary hover:text-red-400"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 md:hidden">

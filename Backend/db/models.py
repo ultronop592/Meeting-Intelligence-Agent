@@ -31,13 +31,30 @@ class Base(DeclarativeBase):
  
  
 
+# TABLE 0 — users
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id              = Column(String, primary_key=True, default=_uuid)
+    email           = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    full_name       = Column(String, nullable=True)
+    created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    meetings        = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
+    processing_jobs = relationship("ProcessingJob", back_populates="user")
+
+
 # TABLE 1 — meetings
 
- 
+
 class Meeting(Base):
     __tablename__ = "meetings"
- 
+
     id               = Column(String,  primary_key=True, default=_uuid)
+    user_id          = Column(String,  ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     title            = Column(String,  nullable=False)
     audio_filename   = Column(String,  nullable=False)
     duration_minutes = Column(Integer, nullable=False)
@@ -45,7 +62,7 @@ class Meeting(Base):
     detailed_summary = Column(Text,    nullable=False)
     transcript          = Column(Text, nullable=True)
     diarized_transcript = Column(Text, nullable=True)
- 
+
     # EmbeddingStatus — tracks RAG pipeline: pending → completed/failed
     # SAEnum maps the Python string values directly to a Postgres ENUM type
     embedding_status = Column(
@@ -53,16 +70,20 @@ class Meeting(Base):
         nullable=False,
         default="pending",
     )
- 
+
     # Vector column for semantic search (1536 dims = OpenAI, 768 = sentence-transformers)
     # Stored here so you can search across all meetings: "what did we decide about auth?"
     transcript_embedding = Column(Vector(768), nullable=True)
- 
+
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
- 
+
     # Relationships — SQLAlchemy loads related rows automatically
     # cascade="all, delete-orphan" means: deleting a meeting deletes all its children
+    user              = relationship("User",            back_populates="meetings")
     action_items      = relationship("ActionItem",      back_populates="meeting", cascade="all, delete-orphan")
+    decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
+    participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
+    notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
     decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
     participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
     notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
@@ -173,9 +194,15 @@ class ProcessingJob(Base):
         default="processing",
     )
 
+    user_id = Column(
+        String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     meeting_id = Column(
         String, ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
     )
+
+    user = relationship("User", back_populates="processing_jobs")
 
     # Lists stored as JSON arrays
     completed_nodes = Column(JSON, nullable=False, default=list)

@@ -109,6 +109,7 @@ class AgentState(BaseModel):
     # --- Input (set before graph starts) -------------------------------------
     audio_file_path: Optional[str] = None
     audio_filename:  Optional[str] = None
+    user_id:         Optional[str] = None
  
     # --- Node outputs --------------------------------------------------------
     transcript:           Optional[str]              = None
@@ -142,9 +143,44 @@ class AgentState(BaseModel):
 # =============================================================================
 # 4. DATABASE ROW MODELS (mirror SQLAlchemy ORM columns in db/models.py)
 # =============================================================================
+
+class UserRegister(BaseModel):
+    email:     str = Field(..., description="User email address")
+    password:  str = Field(..., min_length=6, description="Raw password (at least 6 chars)")
+    full_name: Optional[str] = Field(None, description="User full name")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if "@" not in v or "." not in v:
+            raise ValueError("Invalid email format.")
+        return v
+
+
+class UserLogin(BaseModel):
+    email:    str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id:         str
+    email:      str
+    full_name:  Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type:   str = "bearer"
+    user:         UserResponse
  
 class MeetingRow(BaseModel):
     id:               Optional[str]       = None
+    user_id:          Optional[str]       = None
     title:            str
     audio_filename:   str
     duration_minutes: int

@@ -65,6 +65,55 @@ async def db_session(test_engine):
 
 
 # =============================================================================
+# Pre-seeded user helper & Auth client
+# =============================================================================
+
+@pytest_asyncio.fixture()
+async def seeded_user(db_session: AsyncSession):
+    """Insert a test user into DB and return user object."""
+    import uuid
+    from db.models import User
+    from core.auth import hash_password
+
+    u_id = f"user-{uuid.uuid4().hex[:8]}"
+    email = f"user_{uuid.uuid4().hex[:8]}@example.com"
+    user = User(
+        id=u_id,
+        email=email,
+        hashed_password=hash_password("Password123!"),
+        full_name="Test User",
+    )
+    db_session.add(user)
+    await db_session.commit()
+    return user
+
+
+@pytest_asyncio.fixture()
+def auth_headers(seeded_user):
+    """Generates Authorization header dict with valid Bearer token."""
+    from core.auth import create_access_token
+    token = create_access_token({"sub": seeded_user.id, "email": seeded_user.email})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture()
+async def authenticated_client(db_session: AsyncSession, auth_headers: dict):
+    """AsyncClient with DB override and default Authorization headers."""
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=auth_headers,
+    ) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+# =============================================================================
 # FastAPI async test client with DB override
 # =============================================================================
 
@@ -87,13 +136,13 @@ async def async_client(db_session: AsyncSession):
 # =============================================================================
 
 @pytest_asyncio.fixture()
-async def seeded_meeting(db_session: AsyncSession):
+async def seeded_meeting(db_session: AsyncSession, seeded_user):
     """Insert a minimal Meeting row and return its id."""
     from db.models import Meeting
-    from datetime import datetime, timezone
 
     meeting = Meeting(
         id="test-meeting-id",
+        user_id=seeded_user.id,
         title="Weekly Standup",
         audio_filename="standup.mp3",
         duration_minutes=30,

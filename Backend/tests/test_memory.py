@@ -41,8 +41,8 @@ async def test_memory_indexing_and_search(db_session, seeded_meeting):
 
 
 @pytest.mark.asyncio
-async def test_memory_search_endpoint(async_client):
-    resp = await async_client.post("/memory/search", json={"query": "Weekly Standup", "top_k": 2})
+async def test_memory_search_endpoint(authenticated_client):
+    resp = await authenticated_client.post("/memory/search", json={"query": "Weekly Standup", "top_k": 2})
     assert resp.status_code == 200
     data = resp.json()
     assert data["query"] == "Weekly Standup"

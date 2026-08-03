@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import get_current_user
 from core.config import settings
 from db.database import (
     AsyncSessionLocal,
@@ -20,7 +21,7 @@ from db.database import (
     update_processing_job,
 )
 from db.models import ActionItem as DBActionItem
-from db.models import Decision, Meeting, NotificationLog, Participant
+from db.models import Decision, Meeting, NotificationLog, Participant, User
 from graph.agent_graph import run_meeting_agent
 from models.schemas import (
     ActionItemRow,
@@ -70,7 +71,7 @@ def _utc_iso_now() -> str:
 # =============================================================================
 
 @router.post("/meeting/upload", tags=["meetings"])
-async def upload_audio(file: UploadFile = File(...)):
+async def upload_audio(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     lower_name = (file.filename or "").lower()
     suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS:
@@ -120,12 +121,12 @@ async def upload_audio(file: UploadFile = File(...)):
 # PROCESSING JOB — DB-backed background job tracking
 # =============================================================================
 
-async def _process_job(job_id: str, payload: ProcessMeetingRequest):
+async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str | None = None):
     """Background task: run the full LangGraph pipeline and persist status in DB."""
     job_started_at = datetime.now(timezone.utc)
 
     # Create the job record in DB so it's visible even before completion.
-    await create_processing_job(job_id)
+    await create_processing_job(job_id, user_id=user_id)
 
     try:
         phase_start = time.perf_counter()
@@ -135,6 +136,7 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
             run_meeting_agent,
             payload.audio_file_path,
             payload.audio_filename,
+            user_id,
         )
 
         if not state.meeting_id:
@@ -194,17 +196,22 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest):
 
 
 @router.post("/meetings/process", tags=["meetings"])
-async def process_meeting(request: ProcessMeetingRequest, background_tasks: BackgroundTasks):
+async def process_meeting(
+    request: ProcessMeetingRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
     if not os.path.exists(request.audio_file_path):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file not found")
 
     job_id = str(uuid.uuid4())
-    background_tasks.add_task(_process_job, job_id, request)
+    user_id = request.user_id or current_user.id
+    background_tasks.add_task(_process_job, job_id, request, user_id=user_id)
     return {"job_id": job_id, "message": "Meeting processing started.", "status": "processing"}
 
 
 @router.get("/meetings/status/{job_id}", tags=["meetings"])
-async def get_processing_status(job_id: str):
+async def get_processing_status(job_id: str, current_user: User = Depends(get_current_user)):
     """Return the current processing job status from the database."""
     job = await get_processing_job(job_id)
     if not job:
@@ -217,10 +224,16 @@ async def get_processing_status(job_id: str):
 # =============================================================================
 
 @router.get("/meetings", response_model=list[MeetingListItem], tags=["meetings"])
-async def list_meetings(limit: int = 20, offset: int = 0, db: AsyncSession = Depends(get_db)):
+async def list_meetings(
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     stmt = (
         select(Meeting, func.count(DBActionItem.id).label("action_items_count"))
         .outerjoin(DBActionItem, DBActionItem.meeting_id == Meeting.id)
+        .where((Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None)))
         .group_by(Meeting.id)
         .order_by(Meeting.created_at.desc())
         .limit(limit)
@@ -242,7 +255,11 @@ async def list_meetings(limit: int = 20, offset: int = 0, db: AsyncSession = Dep
 
 
 @router.get("/meetings/{meeting_id}", response_model=MeetingDetailResponse, tags=["meetings"])
-async def get_meeting_details(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def get_meeting_details(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
@@ -543,7 +560,11 @@ async def stream_meeting_audio(meeting_id: str, db: AsyncSession = Depends(get_d
 # =============================================================================
 
 @router.post("/query", response_model=AgentQueryResponse, tags=["agent"])
-async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get_db)):
+async def query_agent(
+    payload: AgentQueryRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     question = payload.question.strip()
     if not question:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
@@ -699,7 +720,11 @@ async def query_agent(payload: AgentQueryRequest, db: AsyncSession = Depends(get
 
 
 @router.post("/query/stream", tags=["agent"])
-async def query_agent_stream(payload: AgentQueryRequest, db: AsyncSession = Depends(get_db)):
+async def query_agent_stream(
+    payload: AgentQueryRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Streaming LLM Q&A endpoint using Server-Sent Events (SSE).
 
     Streams tokens real-time as they are generated by Groq (or fallback).
@@ -880,7 +905,11 @@ async def query_agent_stream(payload: AgentQueryRequest, db: AsyncSession = Depe
 
 
 @router.post("/memory/search", response_model=MemorySearchResponse, tags=["agent"])
-async def search_memory(payload: MemorySearchRequest, db: AsyncSession = Depends(get_db)):
+async def search_memory(
+    payload: MemorySearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Search cross-meeting vector memory using semantic similarity.
 
     Returns relevant past meetings, action items, and decisions matching the query vector.
