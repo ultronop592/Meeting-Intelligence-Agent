@@ -1,80 +1,125 @@
 "use client";
 
-import { useMemo } from "react";
-import { Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useMeetings } from "@/lib/hooks/use-meetings";
-import { SkeletonLoader } from "@/components/ui/skeleton-loader";
-
-function monthKey(dateValue: string | null) {
-  if (!dateValue) return "Unknown";
-  const date = new Date(dateValue);
-  return date.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
-}
+import { useState } from "react";
+import {
+  useAnalyticsSummary,
+  useAnalyticsParticipants,
+  useAnalyticsTimeline,
+  useAnalyticsActionItems,
+  useAnalyticsTopics,
+} from "@/lib/hooks/use-analytics";
+import { AnalyticsHeaderCards } from "@/components/analytics/analytics-header-cards";
+import { CompletionTrendChart } from "@/components/analytics/completion-trend-chart";
+import { ParticipantActivityChart } from "@/components/analytics/participant-activity-chart";
+import { ActionItemDistribution } from "@/components/analytics/action-item-distribution";
+import { RecurringTopics } from "@/components/analytics/recurring-topics";
+import { OwnerBreakdownTable } from "@/components/analytics/owner-breakdown-table";
+import { BarChart3, RefreshCw } from "lucide-react";
 
 export default function AnalyticsPage() {
-  const { data, isLoading, error } = useMeetings();
+  const [period, setPeriod] = useState<"weekly" | "monthly">("monthly");
 
-  const chartData = useMemo(() => {
-    const meetings = data ?? [];
-    const byMonth = new Map<string, { name: string; meetings: number; actions: number }>();
-    meetings.forEach((meeting) => {
-      const key = monthKey(meeting.created_at);
-      const entry = byMonth.get(key) ?? { name: key, meetings: 0, actions: 0 };
-      entry.meetings += 1;
-      entry.actions += meeting.action_items_count || 0;
-      byMonth.set(key, entry);
-    });
-    return Array.from(byMonth.values()).slice(-6);
-  }, [data]);
+  const summaryQuery = useAnalyticsSummary();
+  const participantsQuery = useAnalyticsParticipants();
+  const timelineQuery = useAnalyticsTimeline(period);
+  const actionItemsQuery = useAnalyticsActionItems();
+  const topicsQuery = useAnalyticsTopics();
+
+  const isAnyLoading =
+    summaryQuery.isLoading ||
+    participantsQuery.isLoading ||
+    timelineQuery.isLoading ||
+    actionItemsQuery.isLoading ||
+    topicsQuery.isLoading;
+
+  const hasError =
+    summaryQuery.isError ||
+    participantsQuery.isError ||
+    timelineQuery.isError ||
+    actionItemsQuery.isError ||
+    topicsQuery.isError;
+
+  const handleRefetch = () => {
+    summaryQuery.refetch();
+    participantsQuery.refetch();
+    timelineQuery.refetch();
+    actionItemsQuery.refetch();
+    topicsQuery.refetch();
+  };
 
   return (
     <div className="space-y-app-6">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-text-tertiary">Analytics</p>
-        <h2 className="heading-title mt-2 text-foreground">Meeting performance</h2>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-text-tertiary">
+            Intelligence Center
+          </p>
+          <h2 className="heading-title mt-1 text-foreground flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-accent" />
+            Cross-Meeting Analytics Dashboard
+          </h2>
+        </div>
+        <button
+          onClick={handleRefetch}
+          disabled={isAnyLoading}
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-2 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isAnyLoading ? "animate-spin" : ""}`} />
+          Refresh Metrics
+        </button>
       </div>
 
-      {error ? (
-        <div className="rounded-[16px] border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
-          Analytics unavailable. Please retry later.
+      {hasError ? (
+        <div className="rounded-[16px] border border-danger/40 bg-danger/10 p-4 text-sm text-danger flex items-center justify-between">
+          <span>Failed to load some analytics metrics. Please retry.</span>
+          <button
+            onClick={handleRefetch}
+            className="underline font-semibold hover:text-danger/80"
+          >
+            Retry
+          </button>
         </div>
       ) : null}
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <SkeletonLoader className="h-64" />
-          <SkeletonLoader className="h-64" />
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-[16px] border border-border bg-surface p-4">
-            <p className="text-sm font-semibold text-foreground">Meetings captured</p>
-            <div className="mt-4 h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="meetings" stroke="#FF9F43" strokeWidth={3} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="rounded-[16px] border border-border bg-surface p-4">
-            <p className="text-sm font-semibold text-foreground">Action items generated</p>
-            <div className="mt-4 h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Bar dataKey="actions" fill="#1C1C1C" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 1. Header Summary Metric Cards */}
+      <AnalyticsHeaderCards
+        summary={summaryQuery.data}
+        participants={participantsQuery.data}
+        isLoading={summaryQuery.isLoading || participantsQuery.isLoading}
+      />
+
+      {/* 2. Charts Grid: Trend Chart & Participant Leaderboard */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CompletionTrendChart
+          timeline={timelineQuery.data?.timeline}
+          period={period}
+          onPeriodChange={setPeriod}
+          isLoading={timelineQuery.isLoading}
+        />
+        <ParticipantActivityChart
+          participants={participantsQuery.data?.participants}
+          isLoading={participantsQuery.isLoading}
+        />
+      </div>
+
+      {/* 3. Details Grid: Action Items Status Breakdown & Recurring Topics */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ActionItemDistribution
+          actionItems={actionItemsQuery.data}
+          isLoading={actionItemsQuery.isLoading}
+        />
+        <RecurringTopics
+          topics={topicsQuery.data}
+          isLoading={topicsQuery.isLoading}
+        />
+      </div>
+
+      {/* 4. Owner Breakdown Table */}
+      <OwnerBreakdownTable
+        owners={actionItemsQuery.data?.by_owner}
+        isLoading={actionItemsQuery.isLoading}
+      />
     </div>
   );
 }

@@ -319,4 +319,77 @@ class MemorySearchResponse(BaseModel):
     """Response from POST /memory/search"""
     query: str
     results_count: int
-    matches: list[dict] = Field(default_factory=list)
+    matches: list[dict] = Field(default_factory=list)
+
+
+# =============================================================================
+# 6. ANALYTICS MODELS
+# =============================================================================
+
+class PeriodStats(BaseModel):
+    meetings_count: int = 0
+    action_items_count: int = 0
+    completed_action_items: int = 0
+    completion_rate: float = 0.0
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    total_meetings: int = 0
+    avg_duration_minutes: float = 0.0
+    total_action_items: int = 0
+    completed_action_items: int = 0
+    completion_rate: float = 0.0
+    last_7_days: PeriodStats = Field(default_factory=PeriodStats)
+    last_30_days: PeriodStats = Field(default_factory=PeriodStats)
+
+
+class ParticipantAnalyticsItem(BaseModel):
+    name: str
+    meetings_count: int = 0
+    action_items_count: int = 0
+    completed_action_items: int = 0
+
+
+class AnalyticsParticipantsResponse(BaseModel):
+    participants: list[ParticipantAnalyticsItem] = Field(default_factory=list)
+
+
+class TimelineDataPoint(BaseModel):
+    period: str
+    label: str
+    meetings_count: int = 0
+    action_items_count: int = 0
+    completed_action_items: int = 0
+    avg_duration_minutes: float = 0.0
+
+
+class AnalyticsTimelineResponse(BaseModel):
+    period_type: str = "monthly"
+    timeline: list[TimelineDataPoint] = Field(default_factory=list)
+
+
+class ActionItemOwnerBreakdown(BaseModel):
+    owner: str
+    open: int = 0
+    in_progress: int = 0
+    done: int = 0
+    overdue: int = 0
+    total: int = 0
+
+
+class AnalyticsActionItemsResponse(BaseModel):
+    total_open: int = 0
+    total_in_progress: int = 0
+    total_done: int = 0
+    total_overdue: int = 0
+    by_owner: list[ActionItemOwnerBreakdown] = Field(default_factory=list)
+
+
+class TopicKeywordItem(BaseModel):
+    topic: str
+    count: int = 1
+
+
+class AnalyticsTopicsResponse(BaseModel):
+    topics: list[TopicKeywordItem] = Field(default_factory=list)
+

@@ -148,3 +148,72 @@ export type AgentQueryResponse = {
   sources?: string[];
   [key: string]: unknown;
 };
+
+export type PeriodStats = {
+  meetings_count: number;
+  action_items_count: number;
+  completed_action_items: number;
+  completion_rate: number;
+};
+
+export type AnalyticsSummaryResponse = {
+  total_meetings: number;
+  avg_duration_minutes: number;
+  total_action_items: number;
+  completed_action_items: number;
+  completion_rate: number;
+  last_7_days: PeriodStats;
+  last_30_days: PeriodStats;
+};
+
+export type ParticipantAnalyticsItem = {
+  name: string;
+  meetings_count: number;
+  action_items_count: number;
+  completed_action_items: number;
+};
+
+export type AnalyticsParticipantsResponse = {
+  participants: ParticipantAnalyticsItem[];
+};
+
+export type TimelineDataPoint = {
+  period: string;
+  label: string;
+  meetings_count: number;
+  action_items_count: number;
+  completed_action_items: number;
+  avg_duration_minutes: number;
+};
+
+export type AnalyticsTimelineResponse = {
+  period_type: "weekly" | "monthly";
+  timeline: TimelineDataPoint[];
+};
+
+export type ActionItemOwnerBreakdown = {
+  owner: string;
+  open: number;
+  in_progress: number;
+  done: number;
+  overdue: number;
+  total: number;
+};
+
+export type AnalyticsActionItemsResponse = {
+  total_open: number;
+  total_in_progress: number;
+  total_done: number;
+  total_overdue: number;
+  by_owner: ActionItemOwnerBreakdown[];
+};
+
+export type TopicKeywordItem = {
+  topic: string;
+  count: number;
+};
+
+export type AnalyticsTopicsResponse = {
+  topics: TopicKeywordItem[];
+};
+
