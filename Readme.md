@@ -1,6 +1,6 @@
 # Meeting Intelligence Agent 🎙️🤖
 
-> **Version 2.1.0** · Full-Stack AI Meeting Platform · JWT User Authentication · LangGraph Multi-Agent Pipeline · Neon Postgres + `pgvector` RAG · Dynamic Multi-LLM Routing · Cross-Meeting Analytics Dashboard · Groq Whisper + Llama 3.3/3.1 · Server-Sent Events (SSE) Streaming Q&A · Next.js 16 Frontend
+> **Version 2.2.0** · Full-Stack AI Meeting Platform · JWT User Authentication · Global Search & Semantic Discovery · Speaker Identity Resolution · Sentry & LangGraph Observability · LangGraph Multi-Agent Pipeline · Neon Postgres + `pgvector` RAG · Dynamic Multi-LLM Routing · Cross-Meeting Analytics Dashboard · Groq Whisper + Llama 3.3/3.1 · Server-Sent Events (SSE) Streaming Q&A · Next.js 16 Frontend
 
 **Meeting Intelligence Agent** is a production-grade full-stack AI platform designed to ingest meeting audio recordings of any length, run them through an agentic multi-stage processing pipeline to transcribe and extract structured intelligence, index records into a cross-meeting vector memory layer, generate cross-meeting analytical insights, and automatically synchronize tasks and schedules across Jira Cloud, Google Calendar, Slack, and email.
 
@@ -8,6 +8,9 @@
 
 ## 🌟 Key Features
 
+* 🔍 **Global Intelligence Search & Semantic Discovery**: Unified search endpoint (`GET /search`) across meetings, action items, and decisions, featuring highlighted excerpt generation, search mode toggling (Full-Text vs. Semantic RAG mode via `/memory/search`), and tabbed result views (`frontend/app/(app)/search`).
+* 👥 **Speaker Identity Resolution**: Diarization label mapping system (`POST /meetings/{id}/speakers`) allowing users to map raw speaker tags (`SPEAKER_00`, `SPEAKER_01`) to real participant names and retroactively rewrite meeting transcripts.
+* 📈 **System Observability & Monitoring**: Production observability powered by `sentry-sdk` for exception tracking, LangSmith telemetry for graph pipeline latency breakdowns, and detailed health diagnostics (`GET /health/detailed`).
 * 🔐 **Full JWT Authentication & Isolation**: End-to-end user authentication powered by `PyJWT` and `passlib[bcrypt]`. Features account registration (`/auth/register`), login (`/auth/login`), profile management (`/auth/me`), meeting data isolation per user, and `slowapi` rate limiting (120 req/min/IP).
 * 📊 **Cross-Meeting Analytics Dashboard**: Complete team intelligence hub with 5 aggregate endpoints and interactive Recharts visualizations:
   * **Header Metric Cards**: 7-day and 30-day totals, average duration, action item completion rate, active team load.
