@@ -60,7 +60,7 @@ def _call_summary_llm(client: Groq, system_prompt: str, user_message: str, model
         ],
         response_format={"type": "json_object"},
         temperature=0.25,
-        max_tokens=2048,
+        max_tokens=4096,
     )
     return response.choices[0].message.content or ""
 

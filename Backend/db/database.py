@@ -77,13 +77,40 @@ async def init_db() -> None:
         # === Safe column migrations (idempotent ALTER TABLE) ===
         # These handle the case where the table already exists without new columns.
         if settings.database_url.startswith("postgresql+"):
-            # Phase 2: meetings.user_id (added after initial schema)
+
+            # --- meetings table ---
+            # user_id: added for per-user meeting isolation
             await conn.execute(text("""
                 ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE
+                ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id) ON DELETE SET NULL
             """))
 
-            # Phase 5B: participants.speaker_label (added for diarization mapping)
+            # transcript: plain text transcript from Whisper
+            await conn.execute(text("""
+                ALTER TABLE meetings
+                ADD COLUMN IF NOT EXISTS transcript TEXT
+            """))
+
+            # diarized_transcript: speaker-labelled version (SPEAKER_00: ...)
+            await conn.execute(text("""
+                ALTER TABLE meetings
+                ADD COLUMN IF NOT EXISTS diarized_transcript TEXT
+            """))
+
+            # embedding_status: tracks RAG pipeline state
+            await conn.execute(text("""
+                ALTER TABLE meetings
+                ADD COLUMN IF NOT EXISTS embedding_status VARCHAR NOT NULL DEFAULT 'pending'
+            """))
+
+            # transcript_embedding: 768-dim pgvector embedding for semantic search
+            await conn.execute(text("""
+                ALTER TABLE meetings
+                ADD COLUMN IF NOT EXISTS transcript_embedding vector(768)
+            """))
+
+            # --- participants table ---
+            # speaker_label: diarization label mapping e.g. SPEAKER_00
             await conn.execute(text("""
                 ALTER TABLE participants
                 ADD COLUMN IF NOT EXISTS speaker_label VARCHAR
@@ -323,3 +350,44 @@ async def get_processing_job(job_id: str) -> dict | None:
         except Exception as e:
             logger.error("Failed to get processing job %s: %s", job_id, e)
             return None
+
+
+async def recover_stale_jobs() -> int:
+    """
+    Called once at startup — marks any job still in 'processing' state as 'failed'.
+
+    When uvicorn restarts (e.g. due to --reload or a crash), any in-flight
+    BackgroundTasks are killed instantly. Without this, those jobs stay stuck
+    in 'processing' forever and the frontend spinner never stops.
+
+    Returns the number of jobs recovered.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import update as sa_update
+
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await session.execute(
+                sa_update(ProcessingJob)
+                .where(ProcessingJob.status == "processing")
+                .values(
+                    status="failed",
+                    errors=["Server restarted while job was in progress. Please resubmit."],
+                    completed_at=datetime.now(timezone.utc),
+                )
+                .returning(ProcessingJob.id)
+            )
+            recovered = result.fetchall()
+            await session.commit()
+            if recovered:
+                logger.warning(
+                    "Recovered %d orphaned job(s) on startup: %s",
+                    len(recovered),
+                    [r[0] for r in recovered],
+                )
+            return len(recovered)
+        except Exception as exc:
+            logger.error("Failed to recover stale jobs: %s", exc)
+            await session.rollback()
+            return 0
+

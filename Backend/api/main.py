@@ -16,7 +16,7 @@ from api.auth_routes import auth_router
 from api.routes import router
 from core.config import settings
 from core.logging import setup_logging
-from db.database import init_db
+from db.database import init_db, recover_stale_jobs
 from models.schemas import HealthResponse
 
 setup_logging()
@@ -48,6 +48,9 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("Database initialized successfully")
+        recovered = await recover_stale_jobs()
+        if recovered:
+            logger.warning("%d orphaned processing job(s) marked as failed on startup", recovered)
     except Exception as exc:
         logger.error("Failed to initialize database: %s", exc)
 

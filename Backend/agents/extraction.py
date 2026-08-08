@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from groq import APIConnectionError, APIError, APITimeoutError, Groq, RateLimitError
 from langsmith import traceable
@@ -28,6 +29,24 @@ def _get_system_prompt() -> str:
     return _SYSTEM_PROMPT_TEMPLATE.format(schema=json.dumps(schema, indent=2))
 
 
+# Maximum words sent to the extraction LLM — longer transcripts are trimmed to
+# avoid context-window-exceeded errors. 12 000 words ≈ 48 000 tokens, well within
+# llama-3.1-70b context limits. Adjust via env var EXTRACTION_MAX_WORDS.
+_EXTRACTION_MAX_WORDS = int(os.environ.get("EXTRACTION_MAX_WORDS", 12_000))
+
+
+def _truncate_transcript(transcript: str, max_words: int = _EXTRACTION_MAX_WORDS) -> str:
+    """Trim transcript to max_words from both ends (keep start and end)."""
+    words = transcript.split()
+    if len(words) <= max_words:
+        return transcript
+    # Keep first 80% + last 20% to preserve both context and conclusions
+    keep_start = int(max_words * 0.8)
+    keep_end = max_words - keep_start
+    trimmed = words[:keep_start] + ["\n...[transcript trimmed for length]...\n"] + words[-keep_end:]
+    return " ".join(trimmed)
+
+
 @retry(
     retry=retry_if_exception_type((APIConnectionError, APITimeoutError, RateLimitError)),
     stop=stop_after_attempt(3),
@@ -43,7 +62,7 @@ def _call_extraction_llm(client: Groq, system_prompt: str, transcript: str, mode
         ],
         response_format={"type": "json_object"},
         temperature=0.1,
-        max_tokens=2048,
+        max_tokens=4096,
     )
     return response.choices[0].message.content or ""
 
@@ -67,15 +86,25 @@ def extract_information(state: AgentState) -> dict:
     # word count. Threshold is configurable via LLM_ROUTING_WORD_THRESHOLD.
     transcript_text = state.diarized_transcript or state.transcript
     word_count = len(transcript_text.split())
+    logger.info("Extraction: raw word count=%d, model routing threshold=%d", word_count, llm_router._word_threshold)
     routing = llm_router.select_model("extraction", word_count=word_count)
     selected_model = routing.model
+    logger.info("Extraction: selected model=%s | reason=%s", selected_model, routing.reason)
     # -------------------------------------------------------------------------
+
+    # Truncate very long transcripts to avoid context-window-exceeded errors
+    safe_transcript = _truncate_transcript(transcript_text)
+    if len(safe_transcript) < len(transcript_text):
+        logger.warning(
+            "Transcript truncated from %d to %d words for extraction (limit=%d)",
+            word_count, _EXTRACTION_MAX_WORDS, _EXTRACTION_MAX_WORDS,
+        )
 
     try:
         raw_json = _call_extraction_llm(
             Groq(api_key=settings.groq_api_key),
             _get_system_prompt(),
-            transcript_text,
+            safe_transcript,
             selected_model,
         )
         if not raw_json:
