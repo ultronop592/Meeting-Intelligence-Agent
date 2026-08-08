@@ -1254,4 +1254,199 @@ async def get_analytics_topics(
     return AnalyticsTopicsResponse(topics=top_topics)
 
 
+# =============================================================================
+# PHASE 5 — GLOBAL SEARCH, SPEAKER IDENTITY & DETAILED OBSERVABILITY
+# =============================================================================
+
+@router.get("/search", tags=["search"])
+async def global_search(
+    q: str = Query(..., min_length=1, description="Search query term"),
+    mode: str = Query("fulltext", description="Search mode: 'fulltext' or 'semantic'"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Global search across meetings, action items, and decisions."""
+    search_term = f"%{q.strip()}%"
+    user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
+
+    # 1. Search Meetings (Title, Summaries, Transcript)
+    stmt_meetings = select(Meeting).where(
+        user_filter & (
+            Meeting.title.ilike(search_term) |
+            Meeting.short_summary.ilike(search_term) |
+            Meeting.detailed_summary.ilike(search_term) |
+            Meeting.transcript.ilike(search_term)
+        )
+    ).limit(20)
+    matching_meetings = (await db.execute(stmt_meetings)).scalars().all()
+
+    meeting_results = []
+    for m in matching_meetings:
+        # Extract best snippet
+        full_text = f"{m.short_summary or ''} {m.detailed_summary or ''} {m.transcript or ''}"
+        idx = full_text.lower().find(q.lower())
+        snippet = ""
+        if idx != -1:
+            start = max(0, idx - 40)
+            end = min(len(full_text), idx + len(q) + 60)
+            snippet = f"...{full_text[start:end]}..."
+        else:
+            snippet = (m.short_summary or "")[:120]
+
+        meeting_results.append({
+            "id": m.id,
+            "title": m.title,
+            "short_summary": m.short_summary,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "snippet": snippet,
+        })
+
+    # 2. Search Action Items
+    meeting_ids_stmt = select(Meeting.id).where(user_filter)
+    user_meeting_ids = (await db.execute(meeting_ids_stmt)).scalars().all()
+
+    action_results = []
+    if user_meeting_ids:
+        stmt_actions = select(DBActionItem).where(
+            DBActionItem.meeting_id.in_(user_meeting_ids) & (
+                DBActionItem.description.ilike(search_term) |
+                DBActionItem.owner.ilike(search_term)
+            )
+        ).limit(20)
+        matching_actions = (await db.execute(stmt_actions)).scalars().all()
+
+        for a in matching_actions:
+            action_results.append({
+                "id": a.id,
+                "meeting_id": a.meeting_id,
+                "description": a.description,
+                "owner": a.owner,
+                "status": a.status.value if hasattr(a.status, "value") else str(a.status),
+                "priority": a.priority.value if hasattr(a.priority, "value") else str(a.priority),
+                "due_date": a.due_date,
+            })
+
+    # 3. Search Decisions
+    decision_results = []
+    if user_meeting_ids:
+        stmt_decisions = select(Decision).where(
+            Decision.meeting_id.in_(user_meeting_ids) & (
+                Decision.description.ilike(search_term) |
+                Decision.context.ilike(search_term)
+            )
+        ).limit(20)
+        matching_decisions = (await db.execute(stmt_decisions)).scalars().all()
+
+        for d in matching_decisions:
+            decision_results.append({
+                "id": d.id,
+                "meeting_id": d.meeting_id,
+                "description": d.description,
+                "context": d.context,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            })
+
+    total = len(meeting_results) + len(action_results) + len(decision_results)
+    return {
+        "query": q,
+        "mode": mode,
+        "meetings": meeting_results,
+        "action_items": action_results,
+        "decisions": decision_results,
+        "total_results": total,
+    }
+
+
+@router.post("/meetings/{meeting_id}/speakers", tags=["meetings"])
+async def update_speaker_mapping(
+    meeting_id: str,
+    payload: dict[str, str],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update speaker label mappings (e.g. SPEAKER_00 -> 'Alice Chen') and rewrite diarized transcript."""
+    stmt = select(Meeting).where(Meeting.id == meeting_id)
+    meeting = (await db.execute(stmt)).scalar_one_or_none()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    # Update or add Participant speaker_label records
+    stmt_parts = select(Participant).where(Participant.meeting_id == meeting_id)
+    existing_parts = (await db.execute(stmt_parts)).scalars().all()
+    part_map = {p.speaker_label: p for p in existing_parts if p.speaker_label}
+
+    for speaker_key, resolved_name in payload.items():
+        clean_key = speaker_key.strip()
+        clean_name = resolved_name.strip()
+        if not clean_name:
+            continue
+
+        if clean_key in part_map:
+            part_map[clean_key].name = clean_name
+        else:
+            new_p = Participant(
+                meeting_id=meeting_id,
+                name=clean_name,
+                speaker_label=clean_key,
+            )
+            db.add(new_p)
+
+        # Retroactively replace in diarized_transcript
+        if meeting.diarized_transcript:
+            meeting.diarized_transcript = meeting.diarized_transcript.replace(
+                f"{clean_key}:", f"{clean_name}:"
+            )
+
+    await db.commit()
+    await db.refresh(meeting)
+
+    # Return updated participant list
+    stmt_updated_parts = select(Participant).where(Participant.meeting_id == meeting_id)
+    updated_parts = (await db.execute(stmt_updated_parts)).scalars().all()
+
+    return {
+        "meeting_id": meeting_id,
+        "diarized_transcript": meeting.diarized_transcript,
+        "participants": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "email": p.email,
+                "speaker_label": p.speaker_label,
+            }
+            for p in updated_parts
+        ],
+    }
+
+
+@router.get("/health/detailed", tags=["health"])
+async def detailed_health_check(db: AsyncSession = Depends(get_db)):
+    """Comprehensive system observability endpoint checking database & Groq connectivity."""
+    db_healthy = False
+    db_error = None
+    try:
+        await db.execute(select(1))
+        db_healthy = True
+    except Exception as exc:
+        db_error = str(exc)
+
+    groq_configured = bool(settings.groq_api_key and settings.groq_api_key.strip())
+
+    overall = "healthy" if (db_healthy and groq_configured) else "degraded"
+
+    return {
+        "status": overall,
+        "version": settings.app_version,
+        "database": {
+            "connected": db_healthy,
+            "error": db_error,
+        },
+        "groq_api": {
+            "configured": groq_configured,
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+
 
