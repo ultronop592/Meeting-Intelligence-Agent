@@ -32,12 +32,11 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const value = searchValue.trim();
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mia_global_search", value);
-      window.dispatchEvent(new CustomEvent("mia-global-search", { detail: value }));
+    if (value) {
+      router.push(`/search?q=${encodeURIComponent(value)}`);
+    } else {
+      router.push("/search");
     }
-    const targetBase = pathname?.startsWith("/meetings/") ? pathname : "/meetings";
-    router.push(targetBase);
   };
 
   const userInitial = user?.full_name ? user.full_name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || "U";
@@ -86,7 +85,7 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
             <input
               value={searchValue}
               onChange={(event) => setSearchValue(event.target.value)}
-              placeholder={pathname?.startsWith("/meetings/") ? "Filter this meeting" : "Search meetings"}
+              placeholder="Global search (meetings, decisions, actions...)"
               className="w-72 bg-transparent text-sm text-foreground outline-none placeholder:text-text-tertiary"
             />
           </form>
