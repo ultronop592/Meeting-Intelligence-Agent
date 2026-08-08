@@ -32,10 +32,28 @@ export default function MeetingDetailPage() {
   const [sendingChannel, setSendingChannel] = useState<SendChannel | null>(null);
   const [participantDrafts, setParticipantDrafts] = useState<Record<string, string>>({});
   const [optimisticNotifications, setOptimisticNotifications] = useState<NotificationLogRow[]>([]);
-  const [searchQuery, setSearchQuery] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return (localStorage.getItem("mia_global_search") || "").trim().toLowerCase();
-  });
+  const [speakerDrafts, setSpeakerDrafts] = useState<Record<string, string>>({});
+  const [savingSpeakerMapping, setSavingSpeakerMapping] = useState(false);
+
+  const detectedSpeakers = useMemo(() => {
+    const text = data?.meeting.diarized_transcript || "";
+    const matches = text.match(/SPEAKER_\d+/g) || [];
+    return Array.from(new Set(matches));
+  }, [data?.meeting.diarized_transcript]);
+
+  const saveSpeakerMappings = async () => {
+    if (!meetingId) return;
+    setSavingSpeakerMapping(true);
+    try {
+      await meetingApi.updateSpeakerMapping(meetingId, speakerDrafts);
+      toast.success("Speaker labels resolved & transcript updated.");
+      await invalidateMeetingData();
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setSavingSpeakerMapping(false);
+    }
+  };
 
   const title = useMemo(() => data?.meeting.title ?? "Meeting detail", [data?.meeting.title]);
   useEffect(() => {
@@ -407,6 +425,54 @@ export default function MeetingDetailPage() {
                         >
                           {savingParticipantId === participant.id ? "Saving..." : "Save"}
                         </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Speaker Identity Resolution */}
+            <div className="rounded-[16px] border border-border bg-surface p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Speaker Identity Resolution</p>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    Resolve raw diarization labels (e.g. SPEAKER_00) to actual participant names.
+                  </p>
+                </div>
+                {detectedSpeakers.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={savingSpeakerMapping}
+                    onClick={() => void saveSpeakerMappings()}
+                  >
+                    {savingSpeakerMapping ? "Updating..." : "Save Mappings"}
+                  </Button>
+                )}
+              </div>
+              <div className="mt-4 space-y-3">
+                {detectedSpeakers.length === 0 ? (
+                  <p className="text-sm text-text-secondary">
+                    No unresolved speaker labels found in diarized transcript.
+                  </p>
+                ) : (
+                  detectedSpeakers.map((spkKey) => (
+                    <div key={spkKey} className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-border bg-surface-2 p-3">
+                      <span className="font-mono text-xs font-semibold text-accent">{spkKey}</span>
+                      <div className="flex flex-1 items-center gap-2 max-w-xs">
+                        <Input
+                          value={speakerDrafts[spkKey] ?? ""}
+                          onChange={(e) =>
+                            setSpeakerDrafts((prev) => ({
+                              ...prev,
+                              [spkKey]: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Alice Chen"
+                          className="h-8 text-xs bg-surface"
+                        />
                       </div>
                     </div>
                   ))
