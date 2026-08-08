@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any
 
 from langgraph.graph import END, StateGraph
@@ -93,15 +94,27 @@ agent_graph = build_agent_graph()
 
 @traceable(name="run_meeting_agent", tags=["full-pipeline", "langgraph"], metadata={"nodes": 7})
 def run_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | None = None) -> AgentState:
+    start_time = time.time()
     initial_state = AgentState(
         audio_file_path=audio_file_path,
         audio_filename=audio_filename,
         user_id=user_id,
     )
     try:
+        logger.info("Pipeline execution started for '%s' (User: %s)", audio_filename, user_id or "anonymous")
         final_state_dict: dict[str, Any] = agent_graph.invoke(initial_state)
-        return AgentState(**final_state_dict)
+        result = AgentState(**final_state_dict)
+
+        total_duration_ms = round((time.time() - start_time) * 1000)
+        logger.info(
+            "Pipeline finished in %d ms. Node timing breakdown: %s | Errors count: %d",
+            total_duration_ms,
+            result.node_timings,
+            len(result.errors),
+        )
+        return result
     except Exception as e:
-        logger.exception("Graph execution failed: %s", e)
+        total_duration_ms = round((time.time() - start_time) * 1000)
+        logger.exception("Graph execution failed after %d ms: %s", total_duration_ms, e)
         initial_state.errors.append(f"Unexpected pipeline failure: {e}")
         return initial_state
