@@ -29,6 +29,22 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 async def lifespan(app: FastAPI):
     logger.info("Starting %s v%s", settings.app_name, settings.app_version)
     logger.info("Environment: %s", settings.app_env)
+    
+    sentry_dsn = getattr(settings, "sentry_dsn", None) or os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.fastapi import FastApiIntegration
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                environment=settings.app_env,
+                traces_sample_rate=1.0,
+                integrations=[FastApiIntegration()],
+            )
+            logger.info("Sentry monitoring initialized successfully")
+        except Exception as sentry_exc:
+            logger.warning("Sentry initialization skipped or failed: %s", sentry_exc)
+
     try:
         await init_db()
         logger.info("Database initialized successfully")
