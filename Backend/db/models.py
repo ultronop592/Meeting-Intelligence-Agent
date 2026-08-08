@@ -84,14 +84,9 @@ class Meeting(Base):
     decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
     participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
     notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
-    decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
-    participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
-    notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
- 
- 
+
 
 # TABLE 2 — action_items
-
  
 class ActionItem(Base):
     __tablename__ = "action_items"
@@ -143,11 +138,12 @@ class Decision(Base):
 class Participant(Base):
     __tablename__ = "participants"
  
-    id         = Column(String, primary_key=True, default=_uuid)
-    meeting_id = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False)
-    name       = Column(String, nullable=False)
-    email      = Column(String, nullable=True)   # Optional — may be resolved later
-    created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
+    id            = Column(String, primary_key=True, default=_uuid)
+    meeting_id    = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False)
+    name          = Column(String, nullable=False)
+    email         = Column(String, nullable=True)   # Optional — may be resolved later
+    speaker_label = Column(String, nullable=True)   # e.g. "SPEAKER_00" for diarization mapping
+    created_at    = Column(DateTime(timezone=True), default=_now, nullable=False)
  
     meeting = relationship("Meeting", back_populates="participants")
  
