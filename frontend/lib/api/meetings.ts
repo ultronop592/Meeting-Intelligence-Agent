@@ -261,5 +261,72 @@ export const meetingApi = {
       }
     }
   },
+
+  searchGlobal: (query: string, mode: "fulltext" | "semantic" = "fulltext") =>
+    apiRequest<GlobalSearchResult>(`/search?q=${encodeURIComponent(query)}&mode=${mode}`),
+
+  updateSpeakerMapping: (meetingId: string, mappings: Record<string, string>) =>
+    apiRequest<SpeakerUpdateResponse>(`/meetings/${meetingId}/speakers`, {
+      method: "POST",
+      body: JSON.stringify(mappings),
+    }),
+
+  getDetailedHealth: () =>
+    apiRequest<DetailedHealthResponse>("/health/detailed"),
 };
+
+export type GlobalSearchMeetingResult = {
+  id: string;
+  title: string;
+  short_summary: string;
+  created_at: string | null;
+  snippet: string;
+};
+
+export type GlobalSearchActionResult = {
+  id: string;
+  meeting_id: string;
+  description: string;
+  owner: string;
+  status: string;
+  priority: string;
+  due_date: string;
+};
+
+export type GlobalSearchDecisionResult = {
+  id: string;
+  meeting_id: string;
+  description: string;
+  context: string;
+  created_at: string | null;
+};
+
+export type GlobalSearchResult = {
+  query: string;
+  mode: string;
+  meetings: GlobalSearchMeetingResult[];
+  action_items: GlobalSearchActionResult[];
+  decisions: GlobalSearchDecisionResult[];
+  total_results: number;
+};
+
+export type SpeakerUpdateResponse = {
+  meeting_id: string;
+  diarized_transcript: string | null;
+  participants: ParticipantRow[];
+};
+
+export type DetailedHealthResponse = {
+  status: string;
+  version: string;
+  database: {
+    connected: boolean;
+    error: string | null;
+  };
+  groq_api: {
+    configured: boolean;
+  };
+  timestamp: string;
+};
+
 
