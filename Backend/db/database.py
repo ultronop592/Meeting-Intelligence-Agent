@@ -73,6 +73,22 @@ async def init_db() -> None:
         if settings.database_url.startswith("postgresql+"):
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+
+        # === Safe column migrations (idempotent ALTER TABLE) ===
+        # These handle the case where the table already exists without new columns.
+        if settings.database_url.startswith("postgresql+"):
+            # Phase 2: meetings.user_id (added after initial schema)
+            await conn.execute(text("""
+                ALTER TABLE meetings
+                ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE
+            """))
+
+            # Phase 5B: participants.speaker_label (added for diarization mapping)
+            await conn.execute(text("""
+                ALTER TABLE participants
+                ADD COLUMN IF NOT EXISTS speaker_label VARCHAR
+            """))
+
     logger.info("Database tables verified / created.")
  
  

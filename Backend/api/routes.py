@@ -215,7 +215,7 @@ async def process_meeting(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file not found")
 
     job_id = str(uuid.uuid4())
-    user_id = request.user_id or current_user.id
+    user_id = current_user.id
     background_tasks.add_task(_process_job, job_id, request, user_id=user_id)
     return {"job_id": job_id, "message": "Meeting processing started.", "status": "processing"}
 
