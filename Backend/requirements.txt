@@ -3,6 +3,7 @@
 langgraph==0.2.55
 langchain-core==0.3.28
 langsmith==0.2.3          # LangGraph observability (optional, disable in .env)
+sentry-sdk==2.19.2         # Sentry exception capture & performance monitoring
 
 # --- LLM + Transcription -----------------------------------------------------
 groq==0.13.1              # Whisper (Node 1) + Llama 3.3 (Nodes 2 & 3)
