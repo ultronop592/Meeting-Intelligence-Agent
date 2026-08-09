@@ -34,6 +34,7 @@ export default function MeetingDetailPage() {
   const [optimisticNotifications, setOptimisticNotifications] = useState<NotificationLogRow[]>([]);
   const [speakerDrafts, setSpeakerDrafts] = useState<Record<string, string>>({});
   const [savingSpeakerMapping, setSavingSpeakerMapping] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const detectedSpeakers = useMemo(() => {
     const text = data?.meeting.diarized_transcript || "";

@@ -77,41 +77,46 @@ export function CompletionTrendChart({
             <AreaChart data={timeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="meetingsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#FF9F43" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#FF9F43" stopOpacity={0.0} />
+                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.0} />
                 </linearGradient>
                 <linearGradient id="actionsGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
                   <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E5E5" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border/50" />
               <XAxis
                 dataKey="label"
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 11, fill: "#7A7A7A" }}
+                tick={{ fontSize: 11, fill: "currentColor" }}
+                className="text-text-tertiary"
               />
               <YAxis
                 tickLine={false}
                 axisLine={false}
-                tick={{ fontSize: 11, fill: "#7A7A7A" }}
+                tick={{ fontSize: 11, fill: "currentColor" }}
+                className="text-text-tertiary"
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#FFFFFF",
-                  borderColor: "#E5E5E5",
+                  backgroundColor: "var(--surface, #18181B)",
+                  borderColor: "var(--border, #27272A)",
+                  color: "var(--foreground, #FAFAFA)",
                   borderRadius: "12px",
                   fontSize: "12px",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                  boxShadow: "0 10px 25px -5px rgba(0,0,0,0.3)",
                 }}
+                itemStyle={{ color: "var(--foreground, #FAFAFA)" }}
+                labelStyle={{ fontWeight: "600", color: "var(--foreground, #FAFAFA)", marginBottom: "4px" }}
               />
               <Area
                 type="monotone"
                 dataKey="meetings_count"
                 name="Meetings"
-                stroke="#FF9F43"
+                stroke="#F59E0B"
                 strokeWidth={2.5}
                 fillOpacity={1}
                 fill="url(#meetingsGradient)"
