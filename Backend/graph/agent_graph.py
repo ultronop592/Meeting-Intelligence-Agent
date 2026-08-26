@@ -106,10 +106,12 @@ def run_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | 
         result = AgentState(**final_state_dict)
 
         total_duration_ms = round((time.time() - start_time) * 1000)
+        # node_timings is not part of AgentState — use getattr to avoid AttributeError
+        node_timings = getattr(result, "node_timings", {})
         logger.info(
             "Pipeline finished in %d ms. Node timing breakdown: %s | Errors count: %d",
             total_duration_ms,
-            result.node_timings,
+            node_timings,
             len(result.errors),
         )
         return result

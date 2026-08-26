@@ -130,8 +130,10 @@ class AgentState(BaseModel):
     embedding_status: EmbeddingStatus = EmbeddingStatus.PENDING
  
     # --- Runtime metadata ----------------------------------------------------
-    errors:          list[str] = Field(default_factory=list)
-    completed_nodes: list[str] = Field(default_factory=list)
+    errors:          list[str]        = Field(default_factory=list)
+    completed_nodes: list[str]        = Field(default_factory=list)
+    # Per-node wall-clock timings in milliseconds, e.g. {"transcribe_audio": 12340}
+    node_timings:    dict[str, float] = Field(default_factory=dict)
     # Tracks the last Groq model selected by LLMRouter (e.g. "llama-3.1-8b-instant").
     # Updated by extraction and summary nodes on each run.
     llm_model_used:  Optional[str] = None

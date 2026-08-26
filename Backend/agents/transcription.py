@@ -164,34 +164,41 @@ def _ffmpeg_available() -> bool:
 
 
 def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
-    """Use ffmpeg's segment muxer to split *audio_path* into equal-duration chunks.
+    """Split *audio_path* into equal-duration MP3 audio-only chunks.
 
-    The split uses stream-copy (`-c copy`) — no re-encoding — so it is very
-    fast and lossless.  Each chunk is named ``chunk_000.ext``, ``chunk_001.ext``, etc.
+    Always outputs MP3 (strips video track with -vn and re-encodes audio at
+    64 kbps).  This is critical for video containers like MP4/WEBM where
+    stream-copy would preserve the video track and keep each chunk well above
+    Groq's 25 MB per-request limit.
+
+    64 kbps MP3 @ 10 min ≈ 4.8 MB — well under the 25 MB Groq limit.
+    64 kbps is fully sufficient for meeting/speech audio quality.
 
     Args:
-        audio_path: Path to the source audio file.
-        chunk_dir:  Directory where chunk files will be written.
+        audio_path: Path to the source audio/video file.
+        chunk_dir:  Directory where chunk MP3 files will be written.
 
     Returns:
-        Sorted list of chunk file paths.
+        Sorted list of chunk file paths (always .mp3).
 
     Raises:
         RuntimeError: If ffmpeg exits with a non-zero return code.
     """
-    suffix = audio_path.suffix.lower()
-    output_pattern = os.path.join(chunk_dir, f"chunk_%03d{suffix}")
+    # Always output as MP3 regardless of input container
+    output_pattern = os.path.join(chunk_dir, "chunk_%03d.mp3")
 
     cmd = [
         "ffmpeg",
         "-i", str(audio_path),
         "-f", "segment",
         "-segment_time", str(CHUNK_DURATION_SECONDS),
-        "-c", "copy",                # stream-copy: no re-encode, very fast
-        "-reset_timestamps", "1",    # timestamps restart at 0 for each chunk
+        "-vn",                   # strip video track (critical for MP4/WEBM)
+        "-c:a", "libmp3lame",    # re-encode as MP3
+        "-b:a", "64k",           # 64 kbps — speech quality, ~4.8 MB per 10-min chunk
+        "-reset_timestamps", "1", # timestamps restart at 0 for each chunk
         output_pattern,
-        "-y",                        # overwrite if somehow a file exists
-        "-loglevel", "error",        # suppress progress noise; keep errors
+        "-y",                    # overwrite if somehow a file exists
+        "-loglevel", "error",    # suppress progress noise; keep errors
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -201,20 +208,23 @@ def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
             f"ffmpeg failed to split audio (exit {result.returncode}):\n{stderr_preview}"
         )
 
-    chunks = sorted(Path(chunk_dir).glob(f"chunk_*{suffix}"))
+    chunks = sorted(Path(chunk_dir).glob("chunk_*.mp3"))
     if not chunks:
         raise RuntimeError(
             "ffmpeg ran but produced no output chunks. "
             "The audio file may be corrupt or in an unsupported container."
         )
 
+    chunk_sizes = [f"{c.stat().st_size / (1024*1024):.1f} MB" for c in chunks]
     logger.info(
-        "Audio split into %d chunk(s) of ~%ds each | source=%s",
+        "Audio split into %d chunk(s) of ~%ds each | sizes=%s | source=%s",
         len(chunks),
         CHUNK_DURATION_SECONDS,
+        chunk_sizes,
         audio_path.name,
     )
     return chunks
+
 
 
 def _transcribe_in_chunks(
