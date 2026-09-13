@@ -31,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${sourceSans.variable} ${sourceSerif.variable}`}
+      className={`${sourceSans.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -40,10 +40,13 @@ export default function RootLayout({
             __html: `
               try {
                 var stored = localStorage.getItem('theme');
-                if (stored === 'light') {
-                  document.documentElement.classList.remove('dark');
-                } else {
+                var isDark = stored !== 'light';
+                if (isDark) {
                   document.documentElement.classList.add('dark');
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                  document.documentElement.setAttribute('data-theme', 'light');
                 }
               } catch (e) {}
             `,

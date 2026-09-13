@@ -24,7 +24,9 @@
   --spacing-app-8: 2rem;
 }
 
-:root {
+:root,
+html:not(.dark),
+[data-theme="light"] {
   color-scheme: light;
   --app-content-max: 1280px;
   --app-shell-x: 1rem;
@@ -40,9 +42,20 @@
   --theme-text-secondary: #4f4f4f;
   --theme-text-tertiary: #7a7a7a;
   --theme-danger: #c2410c;
+
+  --color-background: #f7f5ef;
+  --color-foreground: #1c1c1c;
+  --color-border: #e5e5e5;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1efe7;
+  --color-surface-3: #ebe7dc;
+  --color-text-secondary: #4f4f4f;
+  --color-text-tertiary: #7a7a7a;
+  --color-danger: #c2410c;
 }
 
 .dark,
+html.dark,
 [data-theme="dark"] {
   color-scheme: dark;
 
@@ -77,24 +90,27 @@
   scrollbar-color: color-mix(in oklab, var(--color-border) 80%, transparent) transparent;
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-foreground);
+body,
+html:not(.dark) body,
+[data-theme="light"] body {
+  background-color: #f7f5ef !important;
+  color: #1c1c1c !important;
   background-image:
     radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.16), transparent 28%),
     radial-gradient(circle at 100% 10%, rgba(28, 28, 28, 0.08), transparent 22%),
-    linear-gradient(180deg, #f8f6f0 0%, #f3efe5 100%);
+    linear-gradient(180deg, #f8f6f0 0%, #f3efe5 100%) !important;
   min-height: 100vh;
 }
 
 .dark body,
-html.dark body {
-  background: #121316;
-  color: #f4f4f6;
+html.dark body,
+[data-theme="dark"] body {
+  background-color: #121316 !important;
+  color: #f4f4f6 !important;
   background-image:
     radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.08), transparent 32%),
     radial-gradient(circle at 100% 10%, rgba(255, 255, 255, 0.02), transparent 22%),
-    linear-gradient(180deg, #131417 0%, #0d0e11 100%);
+    linear-gradient(180deg, #131417 0%, #0d0e11 100%) !important;
 }
 
 .dark input,

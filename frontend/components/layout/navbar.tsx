@@ -94,13 +94,13 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
         <div className="flex items-center gap-2">
           <Link
             href="/meetings"
-            className="inline-flex h-8 items-center rounded-[10px] border border-border bg-surface px-3 text-xs text-foreground hover:bg-surface-2"
+            className="inline-flex h-9 items-center rounded-xl border border-border bg-surface px-3 text-xs font-medium text-foreground hover:bg-surface-2 transition-colors"
             aria-label="Upload a new meeting"
           >
             <UploadCloud className="mr-2 h-4 w-4" /> Upload
           </Link>
           <ThemeToggle />
-          <Button variant="ghost" size="sm" aria-label="Notifications">
+          <Button variant="ghost" size="sm" aria-label="Notifications" className="h-9 w-9 rounded-xl p-0">
             <Bell className="h-4 w-4" />
           </Button>
 

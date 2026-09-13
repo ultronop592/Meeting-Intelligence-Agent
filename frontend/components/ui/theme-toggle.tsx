@@ -2,25 +2,42 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/providers/theme-provider";
-import { Button } from "@/components/ui/button";
 
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, mounted } = useTheme();
+
+  // Guard against SSR hydration differences while showing a clean placeholder
+  const isDark = mounted ? theme === "dark" : true;
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
+    <button
+      type="button"
       onClick={toggleTheme}
-      className={`h-8 w-8 rounded-[10px] p-0 border border-border bg-surface text-text-secondary hover:bg-surface-2 hover:text-foreground transition-colors ${className || ""}`}
-      title={theme === "dark" ? "Switch to light mode" : "Switch to charcoal dark mode"}
-      aria-label="Toggle theme"
+      className={`group relative inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface px-3 text-xs font-semibold text-foreground shadow-2xs hover:bg-surface-2 hover:border-accent/40 active:scale-95 transition-all cursor-pointer select-none ${
+        className || ""
+      }`}
+      title={isDark ? "Switch to Light Mode" : "Switch to Charcoal Dark Mode"}
+      aria-label="Toggle theme mode"
     >
-      {theme === "dark" ? (
-        <Sun className="h-4 w-4 text-amber-400 transition-transform duration-200 rotate-0" />
+      {isDark ? (
+        <>
+          <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-transform duration-300 group-hover:rotate-45">
+            <Sun className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-medium text-xs text-foreground tracking-wide">
+            Dark
+          </span>
+        </>
       ) : (
-        <Moon className="h-4 w-4 text-slate-700 transition-transform duration-200 rotate-0" />
+        <>
+          <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-slate-200 text-slate-800 border border-slate-300 transition-transform duration-300 group-hover:-rotate-12">
+            <Moon className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-medium text-xs text-foreground tracking-wide">
+            Light
+          </span>
+        </>
       )}
-    </Button>
+    </button>
   );
 }
