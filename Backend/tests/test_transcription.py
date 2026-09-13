@@ -182,7 +182,7 @@ def test_transcribe_in_chunks_merges_transcripts(tmp_path):
         patch("agents.transcription._split_audio_with_ffmpeg", return_value=[chunk1, chunk2]),
         patch("agents.transcription._call_whisper_api", side_effect=["Hello world", "Goodbye world"]),
     ):
-        result = _transcribe_in_chunks(MagicMock(), audio_path)
+        result, _ = _transcribe_in_chunks(MagicMock(), audio_path)
 
     assert result == "Hello world Goodbye world"
 
@@ -202,7 +202,7 @@ def test_transcribe_in_chunks_skips_empty_chunks(tmp_path):
         patch("agents.transcription._split_audio_with_ffmpeg", return_value=[chunk1, chunk2]),
         patch("agents.transcription._call_whisper_api", side_effect=["Real transcript", ""]),
     ):
-        result = _transcribe_in_chunks(MagicMock(), audio_path)
+        result, _ = _transcribe_in_chunks(MagicMock(), audio_path)
 
     assert result == "Real transcript"
 
@@ -274,7 +274,7 @@ def test_transcribe_audio_large_file_uses_chunking(tmp_path):
     state = AgentState(audio_file_path=str(audio), audio_filename="big_meeting.mp3")
 
     with (
-        patch("agents.transcription._transcribe_in_chunks", return_value="Full meeting transcript") as mock_chunk,
+        patch("agents.transcription._transcribe_in_chunks", return_value=("Full meeting transcript", [])) as mock_chunk,
         patch("agents.transcription.Groq"),
     ):
         result = transcribe_audio(state)

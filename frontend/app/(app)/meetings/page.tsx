@@ -19,6 +19,9 @@ type JobTimerMeta = {
   jobId: string | null;
   startedAt: number | null;
   lastDurationMs: number | null;
+  fileName?: string | null;
+  fileSizeMb?: number | null;
+  isDismissed?: boolean;
 };
 
 function formatDuration(ms: number): string {
@@ -37,8 +40,22 @@ export default function MeetingsPage() {
   const uploadMutation = useUploadMeeting();
   const activeJobMetaQuery = useQuery<JobTimerMeta>({
     queryKey: ["active-job-meta"],
-    queryFn: async () => ({ jobId: null, startedAt: null, lastDurationMs: null }),
-    initialData: { jobId: null, startedAt: null, lastDurationMs: null },
+    queryFn: async () => ({
+      jobId: null,
+      startedAt: null,
+      lastDurationMs: null,
+      fileName: null,
+      fileSizeMb: null,
+      isDismissed: false,
+    }),
+    initialData: {
+      jobId: null,
+      startedAt: null,
+      lastDurationMs: null,
+      fileName: null,
+      fileSizeMb: null,
+      isDismissed: false,
+    },
     enabled: false,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -77,8 +94,11 @@ export default function MeetingsPage() {
         jobId: uploadMutation.data.job_id,
         startedAt: Date.now(),
         lastDurationMs: prev?.lastDurationMs ?? null,
+        fileName: uploadMutation.data.filename ?? null,
+        fileSizeMb: uploadMutation.data.size_mb ?? null,
+        isDismissed: false,
       }));
-      toast.success("Upload complete. Processing started.");
+      toast.success("Upload complete. Multi-agent processing started.");
     }
     if (uploadMutation.isError) {
       toast.error(toUserErrorMessage(uploadMutation.error));
@@ -88,6 +108,8 @@ export default function MeetingsPage() {
     uploadMutation.isError,
     uploadMutation.error,
     uploadMutation.data?.job_id,
+    uploadMutation.data?.filename,
+    uploadMutation.data?.size_mb,
     queryClient,
   ]);
 
@@ -100,21 +122,37 @@ export default function MeetingsPage() {
     if (jobStatus.data.status === "processing") return;
 
     if (jobStatus.data.status === "completed") {
-      toast.success("Meeting processed successfully.");
+      toast.success("Meeting processed successfully!");
+      void queryClient.invalidateQueries({ queryKey: ["meetings"] });
     } else if (jobStatus.data.status === "completed_with_errors") {
       toast.error("Meeting completed with warnings. Check details in meeting view.");
+      void queryClient.invalidateQueries({ queryKey: ["meetings"] });
     } else if (jobStatus.data.status === "failed") {
       const reason = jobStatus.data.errors?.[0] || "Processing failed.";
       toast.error(reason);
     }
 
+    // Retain duration but don't instantly nullify jobId to allow viewing results
+    queryClient.setQueryData<JobTimerMeta>(["active-job-meta"], (prev) => ({
+      jobId: prev?.jobId ?? null,
+      startedAt: prev?.startedAt ?? null,
+      lastDurationMs: durationMs ?? prev?.lastDurationMs ?? null,
+      fileName: prev?.fileName ?? null,
+      fileSizeMb: prev?.fileSizeMb ?? null,
+      isDismissed: prev?.isDismissed ?? false,
+    }));
+  }, [jobStatus.data, activeJobMetaQuery.data.startedAt, queryClient]);
+
+  const handleDismissJob = () => {
     queryClient.setQueryData<JobTimerMeta>(["active-job-meta"], (prev) => ({
       jobId: null,
       startedAt: null,
-      lastDurationMs: durationMs ?? prev?.lastDurationMs ?? null,
+      lastDurationMs: prev?.lastDurationMs ?? null,
+      fileName: prev?.fileName ?? null,
+      fileSizeMb: prev?.fileSizeMb ?? null,
+      isDismissed: true,
     }));
-    void queryClient.invalidateQueries({ queryKey: ["meetings"] });
-  }, [jobStatus.data, activeJobMetaQuery.data.startedAt, queryClient]);
+  };
 
   const elapsedMs = useMemo(() => {
     const startedAt = activeJobMetaQuery.data.startedAt;
@@ -148,11 +186,6 @@ export default function MeetingsPage() {
       activeJobs: jobStatus.data?.status === "processing" ? 1 : 0,
     };
   }, [data, jobStatus.data]);
-
-  const pipelineMessage =
-    jobStatus.data?.status === "processing"
-      ? `AI agents are processing transcript, extraction, and summary nodes. Elapsed: ${formatDuration(elapsedMs ?? 0)}.`
-      : "Upload a recording to trigger transcription, extraction, summary, and action pipelines.";
 
   return (
     <div className="space-y-app-6">
@@ -199,15 +232,21 @@ export default function MeetingsPage() {
           disabled={uploadMutation.isPending}
           maxSizeMb={1024}
         />
-        <div className="flex flex-col gap-3 rounded-[16px] border border-border bg-surface p-4">
-          <div className="rounded-[12px] border border-border bg-surface-2 px-3 py-2 text-xs text-text-secondary">
-            {pipelineMessage}
+        <div className="flex flex-col justify-between gap-3 rounded-[16px] border border-border bg-surface p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              Workspace Search & Filters
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Search by title, executive summary, or filter actionable meetings.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Input
-              placeholder="Search meetings"
+              placeholder="Search meetings..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              className="flex-1 min-w-[200px]"
             />
             <div className="flex rounded-full border border-border bg-surface-2 p-1 text-xs">
               {([
@@ -217,10 +256,10 @@ export default function MeetingsPage() {
                 <button
                   key={item.key}
                   type="button"
-                  className={`rounded-full px-3 py-1 ${
+                  className={`rounded-full px-3 py-1 font-medium transition-colors ${
                     filter === item.key
-                      ? "bg-accent text-foreground"
-                      : "text-text-secondary"
+                      ? "bg-accent text-foreground shadow-xs"
+                      : "text-text-secondary hover:text-foreground"
                   }`}
                   onClick={() => setFilter(item.key)}
                 >
@@ -231,18 +270,28 @@ export default function MeetingsPage() {
           </div>
 
           <div className="text-xs text-text-tertiary">
-            {filtered.length} meetings shown
+            {filtered.length} of {data?.length || 0} meetings shown
           </div>
         </div>
       </div>
 
+      {/* Dedicated Multi-Agent Processing Command Center */}
       <ProcessingTimeline
-        status={jobStatus.data?.status}
+        status={activeJobMetaQuery.data.isDismissed ? undefined : jobStatus.data?.status}
         completedNodes={jobStatus.data?.completed_nodes}
         errors={jobStatus.data?.errors}
         elapsedMs={elapsedMs}
         lastDurationMs={activeJobMetaQuery.data.lastDurationMs}
         nodeTimings={jobStatus.data?.node_timings}
+        fileName={activeJobMetaQuery.data.fileName}
+        fileSizeMb={activeJobMetaQuery.data.fileSizeMb}
+        meetingId={jobStatus.data?.meeting_id}
+        meetingTitle={jobStatus.data?.title}
+        shortSummary={jobStatus.data?.short_summary}
+        actionItemsCount={jobStatus.data?.action_items_count}
+        decisionsCount={jobStatus.data?.decisions_count}
+        participantsCount={jobStatus.data?.participants_count}
+        onDismiss={handleDismissJob}
       />
 
       {error ? (
@@ -271,18 +320,6 @@ export default function MeetingsPage() {
           ))}
         </div>
       )}
-
-      {jobStatus.data?.status === "processing" ? (
-        <div className="rounded-[16px] border border-border bg-surface-2 p-4 text-sm text-text-secondary">
-          Processing in progress ({formatDuration(elapsedMs ?? 0)}). We will refresh your meetings when the job is done.
-        </div>
-      ) : null}
-
-      {jobStatus.data?.status === "failed" ? (
-        <div className="rounded-[16px] border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
-          Processing failed: {jobStatus.data.errors?.[0] || "Unknown error"}
-        </div>
-      ) : null}
     </div>
   );
 }
