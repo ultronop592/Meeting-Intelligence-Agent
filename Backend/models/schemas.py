@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from enum import Enum
-from typing import Optional 
+from typing import Any, Optional 
 from pydantic import BaseModel, Field, field_validator
 
 # ENUMS
@@ -394,4 +394,14 @@ class TopicKeywordItem(BaseModel):
 
 class AnalyticsTopicsResponse(BaseModel):
     topics: list[TopicKeywordItem] = Field(default_factory=list)
+
+
+class DispatchMeetingRequest(BaseModel):
+    channels: list[str] = Field(default_factory=lambda: ["slack", "jira", "calendar"])
+    days_from_now: int = Field(default=7, ge=1, le=365)
+
+
+class DispatchMeetingResponse(BaseModel):
+    meeting_id: str
+    results: dict[str, Any] = Field(default_factory=dict)
 

@@ -30,6 +30,7 @@ export default function MeetingDetailPage() {
   const [savingActionItemId, setSavingActionItemId] = useState<string | null>(null);
   const [savingParticipantId, setSavingParticipantId] = useState<string | null>(null);
   const [sendingChannel, setSendingChannel] = useState<SendChannel | null>(null);
+  const [isDispatchingAll, setIsDispatchingAll] = useState(false);
   const [participantDrafts, setParticipantDrafts] = useState<Record<string, string>>({});
   const [optimisticNotifications, setOptimisticNotifications] = useState<NotificationLogRow[]>([]);
   const [speakerDrafts, setSpeakerDrafts] = useState<Record<string, string>>({});
@@ -274,6 +275,23 @@ export default function MeetingDetailPage() {
     }
   };
 
+  const dispatchAllIntegrations = async () => {
+    if (!meetingId || isDispatchingAll) return;
+    setIsDispatchingAll(true);
+    try {
+      await meetingApi.dispatchMeeting(meetingId, {
+        channels: ["slack", "jira", "calendar", "email"],
+        days_from_now: daysFromNow,
+      });
+      toast.success("All selected integrations dispatched.");
+      await invalidateMeetingData();
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setIsDispatchingAll(false);
+    }
+  };
+
   const deleteMeeting = async () => {
     if (!meetingId || deleteMutation.isPending) return;
     const confirmed = window.confirm(
@@ -482,8 +500,29 @@ export default function MeetingDetailPage() {
             </div>
 
             <div className="rounded-[16px] border border-border bg-surface p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Integrations</p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent border border-accent/25">
+                    Human-in-the-Loop Control
+                  </div>
+                  <h3 className="mt-1 text-sm font-semibold text-foreground">
+                    Workflow Dispatch & Integrations
+                  </h3>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    Review and authorize dispatch to external platforms on demand.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  disabled={isDispatchingAll || sendingChannel !== null}
+                  onClick={() => void dispatchAllIntegrations()}
+                  className="gap-1.5 font-medium"
+                >
+                  {isDispatchingAll ? "Dispatching..." : "Sync All Integrations"}
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
                 {channelStatuses.map((entry) => (
                   <span
                     key={entry.channel}

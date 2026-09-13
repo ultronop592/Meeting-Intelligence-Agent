@@ -2,6 +2,8 @@ import { z } from "zod";
 import type {
   ActionItemRow,
   ActionItemStatus,
+  DispatchMeetingRequest,
+  DispatchMeetingResponse,
   HealthResponse,
   MeetingDetailResponse,
   MeetingListItem,
@@ -162,6 +164,15 @@ export const meetingApi = {
   sendCalendar: (meetingId: string, daysFromNow = 7) =>
     apiRequest<SendResult>(`/meetings/${meetingId}/send/calendar?days_from_now=${daysFromNow}`, {
       method: "POST",
+    }),
+
+  dispatchMeeting: (
+    meetingId: string,
+    payload: DispatchMeetingRequest = { channels: ["slack", "jira", "calendar"], days_from_now: 7 }
+  ) =>
+    apiRequest<DispatchMeetingResponse>(`/meetings/${meetingId}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 
   updateParticipantEmail: (meetingId: string, participantId: string, email: string) =>

@@ -5,6 +5,8 @@ import Link from "next/link";
 import {
   AudioWaveform,
   Brain,
+  Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -14,13 +16,19 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  Mail,
+  MessageSquare,
+  Send,
   Sparkles,
   Terminal,
+  Ticket,
   Workflow,
   XCircle,
   Zap,
 } from "lucide-react";
-import type { JobStatus } from "@/types/api";
+import { toast } from "sonner";
+import { meetingApi } from "@/lib/api/meetings";
+import type { DispatchChannelResult, DispatchMeetingChannel, JobStatus } from "@/types/api";
 import { cn } from "@/lib/utils";
 
 export type NodeTiming = {
@@ -111,15 +119,6 @@ const AGENT_STEPS: AgentStep[] = [
     icon: Database,
     accentColor: "from-violet-500/20 to-purple-500/20 text-violet-600 border-violet-500/30",
   },
-  {
-    id: "integrations",
-    name: "Workflow Dispatcher",
-    role: "Jira, Calendar & Slack Sync",
-    description: "Dispatches automated follow-up tickets, invites & team notifications",
-    aliases: ["create_jira_tickets", "book_calendar", "send_notifications"],
-    icon: Zap,
-    accentColor: "from-rose-500/20 to-pink-500/20 text-rose-600 border-rose-500/30",
-  },
 ];
 
 export function ProcessingTimeline({
@@ -144,6 +143,40 @@ export function ProcessingTimeline({
   const isCompleted = status === "completed" || status === "completed_with_errors";
   const isFailed = status === "failed";
 
+  // Human-in-the-Loop Integration Selection State
+  const [selectedChannels, setSelectedChannels] = useState<DispatchMeetingChannel[]>([
+    "slack",
+    "jira",
+    "calendar",
+  ]);
+  const [calendarDays, setCalendarDays] = useState(7);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchResults, setDispatchResults] = useState<Record<string, DispatchChannelResult> | null>(null);
+
+  const toggleChannel = (channel: DispatchMeetingChannel) => {
+    setSelectedChannels((prev) =>
+      prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel]
+    );
+  };
+
+  const handleDispatch = async () => {
+    if (!meetingId || selectedChannels.length === 0 || isDispatching) return;
+    setIsDispatching(true);
+    try {
+      const response = await meetingApi.dispatchMeeting(meetingId, {
+        channels: selectedChannels,
+        days_from_now: calendarDays,
+      });
+      setDispatchResults(response.results);
+      toast.success("Workflow integrations dispatched successfully!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to dispatch integrations";
+      toast.error(msg);
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
   // Calculate active step index
   const activeStepIndex = useMemo(() => {
     if (!isLive) return -1;
@@ -155,15 +188,14 @@ export function ProcessingTimeline({
     return AGENT_STEPS.length - 1;
   }, [isLive, completedNodes]);
 
-  // Overall progress percentage
+  // Overall progress percentage (4 core stages = 25% each)
   const progressPercent = useMemo(() => {
     if (isCompleted) return 100;
     if (!isLive) return 0;
     const completedCount = AGENT_STEPS.filter((step) =>
       step.aliases.some((alias) => completedNodes.includes(alias))
     ).length;
-    // Each step is 20%, plus slight boost for current active step
-    return Math.min(95, Math.max(12, completedCount * 20 + 8));
+    return Math.min(95, Math.max(15, completedCount * 25 + 10));
   }, [isCompleted, isLive, completedNodes]);
 
   // Telemetry stream generator based on elapsed seconds and current node
@@ -244,7 +276,7 @@ export function ProcessingTimeline({
     if (isCompleted) {
       logs.push({
         time: formatStopwatch(elapsedMs ?? lastDurationMs ?? 0),
-        text: "★ Multi-Agent Pipeline completed successfully. Meeting intelligence ready.",
+        text: "★ Multi-Agent Pipeline completed. Meeting intelligence indexed & ready for Human-in-the-Loop review.",
         type: "success",
       });
     }
@@ -439,11 +471,205 @@ export function ProcessingTimeline({
                 Processed in {formatDuration(elapsedMs ?? lastDurationMs ?? 0)}
               </span>
             </div>
+
+            {/* Human-in-the-Loop Authorization & Dispatch Control */}
+            {meetingId && (
+              <div className="mt-4 rounded-xl border border-emerald-600/30 bg-surface/90 p-4 shadow-xs">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      <Sparkles className="h-3 w-3" />
+                      Human-in-the-Loop Review
+                    </div>
+                    <h5 className="mt-1 text-xs font-bold text-foreground">
+                      Authorize External Integrations
+                    </h5>
+                    <p className="mt-0.5 text-[11px] text-text-secondary">
+                      Review the synthesized meeting intelligence above. Select external platforms to sync:
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isDispatching || selectedChannels.length === 0}
+                    onClick={() => void handleDispatch()}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-3.5 py-2 text-xs font-semibold text-background shadow-xs hover:bg-foreground/90 disabled:opacity-50 transition-colors"
+                  >
+                    {isDispatching ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Dispatching...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" />
+                        Dispatch Selected ({selectedChannels.length})
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* 4 Tool Cards with Checkboxes */}
+                <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                  {/* Slack Option */}
+                  <label
+                    className={cn(
+                      "flex cursor-pointer flex-col justify-between rounded-xl border p-3 transition-all",
+                      selectedChannels.includes("slack")
+                        ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs"
+                        : "border-border bg-surface-2/60 opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-emerald-600" />
+                          <span className="text-xs font-bold text-foreground">Slack Channel</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={selectedChannels.includes("slack")}
+                          onChange={() => toggleChannel("slack")}
+                          className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-text-secondary leading-snug">
+                        Post executive brief & action items to team channel.
+                      </p>
+                    </div>
+                    {dispatchResults?.slack && (
+                      <div className="mt-2 text-[10px] font-semibold">
+                        {dispatchResults.slack.status === "sent" ? (
+                          <span className="text-emerald-600">✓ Posted to Slack</span>
+                        ) : (
+                          <span className="text-danger">✗ {dispatchResults.slack.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Jira Option */}
+                  <label
+                    className={cn(
+                      "flex cursor-pointer flex-col justify-between rounded-xl border p-3 transition-all",
+                      selectedChannels.includes("jira")
+                        ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs"
+                        : "border-border bg-surface-2/60 opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Ticket className="h-4 w-4 text-blue-600" />
+                          <span className="text-xs font-bold text-foreground">Jira Issues</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={selectedChannels.includes("jira")}
+                          onChange={() => toggleChannel("jira")}
+                          className="h-4 w-4 rounded border-border text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-text-secondary leading-snug">
+                        Create tickets for {actionItemsCount ?? "all"} extracted action items.
+                      </p>
+                    </div>
+                    {dispatchResults?.jira && (
+                      <div className="mt-2 text-[10px] font-semibold">
+                        {dispatchResults.jira.status === "sent" ? (
+                          <span className="text-emerald-600">✓ {dispatchResults.jira.message}</span>
+                        ) : dispatchResults.jira.status === "skipped" ? (
+                          <span className="text-text-tertiary">{dispatchResults.jira.message}</span>
+                        ) : (
+                          <span className="text-danger">✗ {dispatchResults.jira.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Calendar Option */}
+                  <label
+                    className={cn(
+                      "flex cursor-pointer flex-col justify-between rounded-xl border p-3 transition-all",
+                      selectedChannels.includes("calendar")
+                        ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs"
+                        : "border-border bg-surface-2/60 opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-amber-600" />
+                          <span className="text-xs font-bold text-foreground">Google Calendar</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={selectedChannels.includes("calendar")}
+                          onChange={() => toggleChannel("calendar")}
+                          className="h-4 w-4 rounded border-border text-amber-600 focus:ring-amber-500"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-text-secondary leading-snug">
+                        Schedule follow-up sync for attendees in {calendarDays} days.
+                      </p>
+                    </div>
+                    {dispatchResults?.calendar && (
+                      <div className="mt-2 text-[10px] font-semibold">
+                        {dispatchResults.calendar.status === "sent" ? (
+                          <span className="text-emerald-600">✓ Event scheduled</span>
+                        ) : (
+                          <span className="text-danger">✗ {dispatchResults.calendar.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Email Option */}
+                  <label
+                    className={cn(
+                      "flex cursor-pointer flex-col justify-between rounded-xl border p-3 transition-all",
+                      selectedChannels.includes("email")
+                        ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs"
+                        : "border-border bg-surface-2/60 opacity-80 hover:opacity-100"
+                    )}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-purple-600" />
+                          <span className="text-xs font-bold text-foreground">Email Notes</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={selectedChannels.includes("email")}
+                          onChange={() => toggleChannel("email")}
+                          className="h-4 w-4 rounded border-border text-purple-600 focus:ring-purple-500"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-text-secondary leading-snug">
+                        Send personalized minutes to meeting participants.
+                      </p>
+                    </div>
+                    {dispatchResults?.email && (
+                      <div className="mt-2 text-[10px] font-semibold">
+                        {dispatchResults.email.status === "sent" ? (
+                          <span className="text-emerald-600">✓ {dispatchResults.email.message}</span>
+                        ) : dispatchResults.email.status === "skipped" ? (
+                          <span className="text-text-tertiary">{dispatchResults.email.message}</span>
+                        ) : (
+                          <span className="text-danger">✗ {dispatchResults.email.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 5 Autonomous Agent Nodes Flow Grid */}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {/* 4 Autonomous Agent Nodes Flow Grid */}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {AGENT_STEPS.map((step, idx) => {
             const isDone = step.aliases.some((alias) => completedNodes.includes(alias));
             const isActive = isLive && !isDone && idx === activeStepIndex;

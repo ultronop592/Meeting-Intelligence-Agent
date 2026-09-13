@@ -22,13 +22,15 @@ from db.database import (
 )
 from db.models import ActionItem as DBActionItem
 from db.models import Decision, Meeting, NotificationLog, Participant, User
-from graph.agent_graph import run_meeting_agent
+from graph.agent_graph import arun_meeting_agent, run_meeting_agent
 from models.schemas import (
     ActionItemRow,
     ActionItemStatus,
     AgentQueryRequest,
     AgentQueryResponse,
     DecisionRow,
+    DispatchMeetingRequest,
+    DispatchMeetingResponse,
     MeetingDetailResponse,
     MeetingListItem,
     MeetingRow,
@@ -132,7 +134,7 @@ async def upload_audio(file: UploadFile = File(...), current_user: User = Depend
 # =============================================================================
 
 async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str | None = None):
-    """Background task: run the full LangGraph pipeline and persist status in DB."""
+    """Background task: run the multi-agent pipeline and persist status in DB."""
     job_started_at = datetime.now(timezone.utc)
 
     # Create the job record in DB so it's visible even before completion.
@@ -141,16 +143,29 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
     try:
         phase_start = time.perf_counter()
 
-        # Run the sync graph in a worker thread to keep the event loop free.
-        state = await asyncio.to_thread(
-            run_meeting_agent,
+        # Run the async multi-agent graph directly on the server event loop.
+        # LangGraph runs sync nodes in worker threads and awaits async nodes (save_to_database)
+        # on the active loop without cross-thread event loop collisions.
+        state = await arun_meeting_agent(
             payload.audio_file_path,
             payload.audio_filename,
             user_id,
         )
 
+        completed_nodes = ["upload"] + (state.completed_nodes or [])
+
         if not state.meeting_id:
-            raise RuntimeError("Pipeline finished without persisting a meeting_id")
+            # Pipeline finished without persisting a meeting_id — preserve full error detail
+            err_details = state.errors if state.errors else ["Pipeline finished without persisting a meeting record."]
+            logger.error("Pipeline did not persist meeting for job %s. Errors: %s", job_id, err_details)
+            await update_processing_job(
+                job_id,
+                status="failed",
+                completed_nodes=completed_nodes,
+                errors=err_details,
+                completed_at=datetime.now(timezone.utc),
+            )
+            return
 
         async with AsyncSessionLocal() as session:
             meeting = await session.get(Meeting, state.meeting_id)
@@ -169,12 +184,12 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
 
         completed_at = datetime.now(timezone.utc)
         total_duration_ms = int((time.perf_counter() - phase_start) * 1000)
-        notifications_sent = len([n for n in state.notification_results if n.get("status") == "sent"])
 
+        # In Human-in-the-loop flow, integrations are dispatched on demand after summary inspection.
         await update_processing_job(
             job_id,
             status="completed",
-            completed_nodes=["upload"] + state.completed_nodes,
+            completed_nodes=completed_nodes,
             errors=state.errors,
             meeting_id=meeting.id,
             completed_at=completed_at,
@@ -184,17 +199,17 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
             action_items_count=int(action_items_count or 0),
             decisions_count=int(decisions_count or 0),
             participants_count=int(participants_count or 0),
-            jira_tickets_created=len(state.jira_ticket_ids),
-            calendar_event_id=state.calendar_event_id,
-            notifications_sent=notifications_sent,
+            jira_tickets_created=0,
+            calendar_event_id=None,
+            notifications_sent=0,
         )
     except Exception as exc:
-        logger.exception("Processing job failed")
+        logger.exception("Processing job failed with unexpected error")
         await update_processing_job(
             job_id,
             status="failed",
-            completed_nodes=[],
-            errors=[str(exc)],
+            completed_nodes=["upload"],
+            errors=[f"Pipeline processing error: {exc}"],
             completed_at=datetime.now(timezone.utc),
         )
     finally:
@@ -516,6 +531,173 @@ async def send_calendar(
         "event_id": result.get("event_id"),
         "event_url": result.get("event_url"),
     }
+
+
+@router.post("/meetings/{meeting_id}/dispatch", response_model=DispatchMeetingResponse, tags=["meetings"])
+async def dispatch_meeting(
+    meeting_id: str,
+    payload: DispatchMeetingRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Human-in-the-Loop Batch Dispatch: Send meeting intelligence to approved external tools."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    results: dict[str, Any] = {}
+    requested_channels = set(payload.channels or [])
+
+    # 1. Slack
+    if "slack" in requested_channels:
+        try:
+            action_items_rows = (
+                await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+            ).scalars().all()
+            decisions_count = (
+                await db.execute(select(func.count(Decision.id)).where(Decision.meeting_id == meeting_id))
+            ).scalar_one()
+            participants = (
+                await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+            ).scalars().all()
+
+            from models.schemas import ActionItem as ActionItemSchema, Priority
+            action_items = [
+                ActionItemSchema(
+                    description=i.description,
+                    owner=i.owner,
+                    due_date=i.due_date,
+                    priority=Priority(i.priority),
+                )
+                for i in action_items_rows
+            ]
+
+            slack_res = await send_slack_for_meeting(
+                meeting_id=meeting_id,
+                meeting_title=meeting.title,
+                short_summary=meeting.short_summary,
+                action_items=action_items,
+                participants=[p.name for p in participants],
+                decisions_count=int(decisions_count or 0),
+                duration_minutes=meeting.duration_minutes,
+            )
+            results["slack"] = {
+                "status": "sent" if slack_res["success"] else "failed",
+                "message": "Slack notification sent successfully." if slack_res["success"] else slack_res.get("error", "Slack dispatch failed"),
+            }
+        except Exception as exc:
+            results["slack"] = {"status": "failed", "message": str(exc)}
+
+    # 2. Jira
+    if "jira" in requested_channels:
+        try:
+            action_items_rows = (
+                await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+            ).scalars().all()
+
+            if not action_items_rows:
+                results["jira"] = {
+                    "status": "skipped",
+                    "created_count": 0,
+                    "failed_count": 0,
+                    "message": "No action items found for Jira ticket creation.",
+                    "created": [],
+                }
+            else:
+                from models.schemas import ActionItem as ActionItemSchema, Priority
+                action_items = [
+                    ActionItemSchema(
+                        description=i.description,
+                        owner=i.owner,
+                        due_date=i.due_date,
+                        priority=Priority(i.priority),
+                    )
+                    for i in action_items_rows
+                ]
+                jira_res = await send_jira_for_meeting(
+                    meeting_id=meeting_id,
+                    action_items=action_items,
+                )
+                results["jira"] = {
+                    "status": "sent" if jira_res["created"] else ("failed" if jira_res["failed"] else "skipped"),
+                    "created_count": len(jira_res.get("created", [])),
+                    "failed_count": len(jira_res.get("failed", [])),
+                    "message": f"Created {len(jira_res.get('created', []))} Jira tickets.",
+                    "created": jira_res.get("created", []),
+                }
+        except Exception as exc:
+            results["jira"] = {"status": "failed", "message": str(exc)}
+
+    # 3. Calendar
+    if "calendar" in requested_channels:
+        try:
+            participants = (
+                await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+            ).scalars().all()
+            cal_res = await send_calendar_for_meeting(
+                meeting_id=meeting_id,
+                meeting_title=meeting.title,
+                participants=[p.name for p in participants],
+                emails=[p.email for p in participants if p.email],
+                days_from_now=payload.days_from_now,
+            )
+            results["calendar"] = {
+                "status": "sent" if not cal_res.get("error") else "failed",
+                "event_id": cal_res.get("event_id"),
+                "event_url": cal_res.get("event_url"),
+                "message": f"Calendar follow-up booked for {payload.days_from_now} day(s) from now." if not cal_res.get("error") else cal_res.get("error"),
+            }
+        except Exception as exc:
+            results["calendar"] = {"status": "failed", "message": str(exc)}
+
+    # 4. Email
+    if "email" in requested_channels:
+        try:
+            action_items_rows = (
+                await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+            ).scalars().all()
+            participants = (
+                await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+            ).scalars().all()
+            participant_emails = {p.name: p.email for p in participants if p.email}
+            if not participant_emails:
+                results["email"] = {
+                    "status": "skipped",
+                    "sent_count": 0,
+                    "failed_count": 0,
+                    "message": "No participant email addresses configured.",
+                }
+            else:
+                from models.schemas import ActionItem as ActionItemSchema, Priority
+                action_items = [
+                    ActionItemSchema(
+                        description=i.description,
+                        owner=i.owner,
+                        due_date=i.due_date,
+                        priority=Priority(i.priority),
+                    )
+                    for i in action_items_rows
+                ]
+                email_res = await send_email_for_meeting(
+                    meeting_id=meeting_id,
+                    meeting_title=meeting.title,
+                    short_summary=meeting.short_summary,
+                    all_action_items=action_items,
+                    participant_emails=participant_emails,
+                )
+                results["email"] = {
+                    "status": "sent" if email_res["sent"] > 0 else "failed",
+                    "sent_count": email_res["sent"],
+                    "failed_count": email_res["failed"],
+                    "message": f"Email dispatch complete — sent: {email_res['sent']}, failed: {email_res['failed']}",
+                }
+        except Exception as exc:
+            results["email"] = {"status": "failed", "message": str(exc)}
+
+    return DispatchMeetingResponse(
+        meeting_id=meeting_id,
+        results=results,
+    )
 
 
 @router.get("/meetings/{meeting_id}/audio", tags=["meetings"])

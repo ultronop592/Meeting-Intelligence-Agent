@@ -217,3 +217,25 @@ export type AnalyticsTopicsResponse = {
   topics: TopicKeywordItem[];
 };
 
+export type DispatchMeetingChannel = "slack" | "jira" | "calendar" | "email";
+
+export type DispatchMeetingRequest = {
+  channels: DispatchMeetingChannel[];
+  days_from_now?: number;
+};
+
+export type DispatchChannelResult = {
+  status: "sent" | "failed" | "skipped";
+  message?: string;
+  created_count?: number;
+  failed_count?: number;
+  sent_count?: number;
+  event_url?: string | null;
+  created?: string[];
+};
+
+export type DispatchMeetingResponse = {
+  meeting_id: string;
+  results: Record<string, DispatchChannelResult>;
+};
+

@@ -274,6 +274,36 @@ async def test_send_calendar_tool_error(authenticated_client, seeded_meeting, se
 
 
 # =============================================================================
+# Human-in-the-Loop Batch Dispatch
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_dispatch_meeting_not_found(authenticated_client):
+    resp = await authenticated_client.post(
+        "/meetings/nonexistent-id/dispatch",
+        json={"channels": ["slack", "jira", "calendar"], "days_from_now": 7},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dispatch_meeting_success(authenticated_client, seeded_meeting, seeded_action_item, seeded_participant):
+    with patch("api.routes.send_slack_for_meeting", new=AsyncMock(return_value={"success": True, "error": None})), \
+         patch("api.routes.send_jira_for_meeting", new=AsyncMock(return_value={"created": ["PROJ-1"], "failed": []})), \
+         patch("api.routes.send_calendar_for_meeting", new=AsyncMock(return_value={"event_id": "cal1", "event_url": "https://cal.com/1", "error": None})):
+        resp = await authenticated_client.post(
+            f"/meetings/{seeded_meeting.id}/dispatch",
+            json={"channels": ["slack", "jira", "calendar"], "days_from_now": 7},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["meeting_id"] == seeded_meeting.id
+    assert data["results"]["slack"]["status"] == "sent"
+    assert data["results"]["jira"]["status"] == "sent"
+    assert data["results"]["calendar"]["status"] == "sent"
+
+
+# =============================================================================
 # Job status endpoint
 # =============================================================================
 
