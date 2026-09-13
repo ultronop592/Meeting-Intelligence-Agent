@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers/auth-provider";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const mobileNav = [
   { href: "/dashboard", label: "Dashboard" },
@@ -98,6 +99,7 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
           >
             <UploadCloud className="mr-2 h-4 w-4" /> Upload
           </Link>
+          <ThemeToggle />
           <Button variant="ghost" size="sm" aria-label="Notifications">
             <Bell className="h-4 w-4" />
           </Button>

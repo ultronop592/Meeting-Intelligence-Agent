@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f7f5ef;
-  --color-foreground: #1c1c1c;
+  --color-background: var(--theme-background, #f7f5ef);
+  --color-foreground: var(--theme-foreground, #1c1c1c);
   --color-accent: #ff9f43;
   --color-accent-strong: #f08b2f;
-  --color-border: #e5e5e5;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1efe7;
-  --color-surface-3: #ebe7dc;
-  --color-text-secondary: #4f4f4f;
-  --color-text-tertiary: #7a7a7a;
-  --color-danger: #c2410c;
+  --color-border: var(--theme-border, #e5e5e5);
+  --color-surface: var(--theme-surface, #ffffff);
+  --color-surface-2: var(--theme-surface-2, #f1efe7);
+  --color-surface-3: var(--theme-surface-3, #ebe7dc);
+  --color-text-secondary: var(--theme-text-secondary, #4f4f4f);
+  --color-text-tertiary: var(--theme-text-tertiary, #7a7a7a);
+  --color-danger: var(--theme-danger, #c2410c);
 
   --text-display-lg: 2rem;
   --text-title-lg: 1.5rem;
@@ -29,11 +29,52 @@
   --app-content-max: 1280px;
   --app-shell-x: 1rem;
   --app-shell-y: 1.5rem;
+
+  /* Light warm editorial theme */
+  --theme-background: #f7f5ef;
+  --theme-foreground: #1c1c1c;
+  --theme-border: #e5e5e5;
+  --theme-surface: #ffffff;
+  --theme-surface-2: #f1efe7;
+  --theme-surface-3: #ebe7dc;
+  --theme-text-secondary: #4f4f4f;
+  --theme-text-tertiary: #7a7a7a;
+  --theme-danger: #c2410c;
+}
+
+.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Charcoal Black Theme */
+  --theme-background: #121316;
+  --theme-foreground: #f4f4f6;
+  --theme-border: #282a33;
+  --theme-surface: #18191f;
+  --theme-surface-2: #22242c;
+  --theme-surface-3: #2c2f3a;
+  --theme-text-secondary: #a1a5b3;
+  --theme-text-tertiary: #6d7280;
+  --theme-danger: #f87171;
+
+  --color-background: #121316;
+  --color-foreground: #f4f4f6;
+  --color-border: #282a33;
+  --color-surface: #18191f;
+  --color-surface-2: #22242c;
+  --color-surface-3: #2c2f3a;
+  --color-text-secondary: #a1a5b3;
+  --color-text-tertiary: #6d7280;
+  --color-danger: #f87171;
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--color-border) 70%, transparent) transparent;
+}
+
+.dark * {
+  scrollbar-color: color-mix(in oklab, var(--color-border) 80%, transparent) transparent;
 }
 
 body {
@@ -43,6 +84,23 @@ body {
     radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.16), transparent 28%),
     radial-gradient(circle at 100% 10%, rgba(28, 28, 28, 0.08), transparent 22%),
     linear-gradient(180deg, #f8f6f0 0%, #f3efe5 100%);
+  min-height: 100vh;
+}
+
+.dark body,
+html.dark body {
+  background: #121316;
+  color: #f4f4f6;
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.08), transparent 32%),
+    radial-gradient(circle at 100% 10%, rgba(255, 255, 255, 0.02), transparent 22%),
+    linear-gradient(180deg, #131417 0%, #0d0e11 100%);
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  color-scheme: dark;
 }
 
 ::selection {
@@ -114,8 +172,17 @@ body {
     border: 1px solid var(--color-border);
   }
 
+  .dark .glass-panel {
+    background: color-mix(in oklab, #18191f 85%, transparent);
+    border-color: #282a33;
+  }
+
   .elevated-card {
     box-shadow: 0 8px 26px -24px rgba(17, 17, 17, 0.55);
+  }
+
+  .dark .elevated-card {
+    box-shadow: 0 12px 36px -16px rgba(0, 0, 0, 0.85);
   }
 
   .stagger-in {
@@ -124,6 +191,10 @@ body {
 
   .agent-glow {
     box-shadow: 0 0 25px rgba(255, 159, 67, 0.25), inset 0 0 15px rgba(255, 159, 67, 0.08);
+  }
+
+  .dark .agent-glow {
+    box-shadow: 0 0 30px rgba(255, 159, 67, 0.35), inset 0 0 15px rgba(255, 159, 67, 0.12);
   }
 }
 
@@ -187,4 +258,3 @@ body {
     opacity: 0;
   }
 }
-

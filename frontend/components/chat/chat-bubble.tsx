@@ -84,7 +84,7 @@ function FormattedContent({ text }: { text: string }) {
         elements.push(
           <div
             key={`code-${index}`}
-            className="my-3 overflow-x-auto rounded-lg border border-border bg-foreground/95 p-3 text-xs text-surface font-mono"
+            className="my-3 overflow-x-auto rounded-lg border border-border bg-surface-2 p-3 text-xs text-foreground font-mono"
           >
             <pre>{codeBuffer.join("\n")}</pre>
           </div>
@@ -181,7 +181,7 @@ function FormattedContent({ text }: { text: string }) {
     elements.push(
       <div
         key="code-end"
-        className="my-3 overflow-x-auto rounded-lg border border-border bg-foreground/95 p-3 text-xs text-surface font-mono"
+        className="my-3 overflow-x-auto rounded-lg border border-border bg-surface-2 p-3 text-xs text-foreground font-mono"
       >
         <pre>{codeBuffer.join("\n")}</pre>
       </div>
@@ -214,7 +214,7 @@ export function ChatBubble({ role, message, timestamp, isStreaming, sources }: C
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-medium shadow-xs transition-transform",
           isUser
             ? "bg-accent text-white"
-            : "bg-gradient-to-br from-amber-500/20 to-orange-500/30 text-amber-800 border border-amber-500/30"
+            : "bg-accent/15 text-accent border border-accent/30"
         )}
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}

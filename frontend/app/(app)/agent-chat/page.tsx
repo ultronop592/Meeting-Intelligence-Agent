@@ -10,8 +10,6 @@ import {
   Calendar,
   ChevronDown,
   Layers,
-  Cpu,
-  CornerDownLeft,
 } from "lucide-react";
 import { useAgentChatStream } from "@/lib/hooks/use-agent-chat";
 import { useMeetings } from "@/lib/hooks/use-meetings";
@@ -55,7 +53,7 @@ export default function AgentChatPage() {
     {
       role: "assistant",
       message:
-        "Hello! I am your AI Meeting Intelligence Agent, powered by **OpenRouter (LLaMA 3.3 70B)** with complete meeting context awareness.\n\nSelect a meeting above or ask anything across all your recorded meetings.",
+        "Hello! I am your AI Meeting Intelligence Agent with complete context awareness across your meetings.\n\nSelect a meeting above or ask anything across all your recorded meetings.",
       timestamp: "Just now",
     },
   ]);
@@ -201,10 +199,8 @@ export default function AgentChatPage() {
         {/* Model Status & Clear Action */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-text-secondary">
-            <Cpu className="h-3.5 w-3.5 text-accent" />
-            <span className="font-medium text-foreground">OpenRouter</span>
-            <span className="text-text-tertiary">•</span>
-            <span className="text-[11px] text-text-tertiary">LLaMA 3.3 70B</span>
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            <span className="font-medium text-foreground">Intelligence Active</span>
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -248,12 +244,12 @@ export default function AgentChatPage() {
         </div>
 
         {selectedMeeting ? (
-          <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
+          <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2.5 py-1">
             <Calendar className="h-3 w-3 shrink-0" />
             <span className="font-medium truncate max-w-[220px]">
               {selectedMeeting.title}
             </span>
-            <span className="text-[10px] text-emerald-600 bg-emerald-100 rounded px-1.5 py-0.5">
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 rounded px-1.5 py-0.5">
               Full context active
             </span>
           </div>
@@ -341,7 +337,7 @@ export default function AgentChatPage() {
           <span>
             Press <kbd className="rounded border border-border bg-surface px-1 py-0.5 font-mono text-[10px]">Enter</kbd> to send, <kbd className="rounded border border-border bg-surface px-1 py-0.5 font-mono text-[10px]">Shift + Enter</kbd> for new line
           </span>
-          <span>Powered by OpenRouter AI</span>
+          <span>Meeting Intelligence AI</span>
         </div>
       </div>
     </div>
