@@ -1,499 +1,351 @@
-# Meeting Intelligence Agent 🎙️🤖
+# Meeting Intelligence Agent
 
-> **Version 2.2.0** · Full-Stack AI Meeting Platform · JWT User Authentication · Global Search & Semantic Discovery · Speaker Identity Resolution · Sentry & LangGraph Observability · LangGraph Multi-Agent Pipeline · Neon Postgres + `pgvector` RAG · Dynamic Multi-LLM Routing · Cross-Meeting Analytics Dashboard · Groq Whisper + Llama 3.3/3.1 · Server-Sent Events (SSE) Streaming Q&A · Next.js 16 Frontend
+Enterprise AI Meeting Intelligence and Workflow Automation Platform
 
-**Meeting Intelligence Agent** is a production-grade full-stack AI platform designed to ingest meeting audio recordings of any length, run them through an agentic multi-stage processing pipeline to transcribe and extract structured intelligence, index records into a cross-meeting vector memory layer, generate cross-meeting analytical insights, and automatically synchronize tasks and schedules across Jira Cloud, Google Calendar, Slack, and email.
-
----
-
-## 🌟 Key Features
-
-* 🔍 **Global Intelligence Search & Semantic Discovery**: Unified search endpoint (`GET /search`) across meetings, action items, and decisions, featuring highlighted excerpt generation, search mode toggling (Full-Text vs. Semantic RAG mode via `/memory/search`), and tabbed result views (`frontend/app/(app)/search`).
-* 👥 **Speaker Identity Resolution**: Diarization label mapping system (`POST /meetings/{id}/speakers`) allowing users to map raw speaker tags (`SPEAKER_00`, `SPEAKER_01`) to real participant names and retroactively rewrite meeting transcripts.
-* 📈 **System Observability & Monitoring**: Production observability powered by `sentry-sdk` for exception tracking, LangSmith telemetry for graph pipeline latency breakdowns, and detailed health diagnostics (`GET /health/detailed`).
-* 🔐 **Full JWT Authentication & Isolation**: End-to-end user authentication powered by `PyJWT` and `passlib[bcrypt]`. Features account registration (`/auth/register`), login (`/auth/login`), profile management (`/auth/me`), meeting data isolation per user, and `slowapi` rate limiting (120 req/min/IP).
-* 📊 **Cross-Meeting Analytics Dashboard**: Complete team intelligence hub with 5 aggregate endpoints and interactive Recharts visualizations:
-  * **Header Metric Cards**: 7-day and 30-day totals, average duration, action item completion rate, active team load.
-  * **Meeting & Action Trend Chart**: Weekly and monthly area chart tracking meeting volume vs. completed action items.
-  * **Participant Leaderboard**: Bar chart ranking team members by meeting attendance and action item assignments.
-  * **Action Item Distribution**: Multi-segment progress breakdown for Open, In Progress, Done, and Overdue tasks.
-  * **Recurring Topic Analysis**: Keyword extraction analyzing key discussion topics across all user meetings.
-  * **Owner Breakdown Table**: Detailed task distribution, completion rate, and overdue tracking per owner.
-* 🤖 **Multi-Agent Pipeline (LangGraph)**: A directed state machine manages audio validation, PyAnnote speaker diarization, Groq Whisper transcription, structured extraction, summarization, vector indexing, database serialization, and multi-channel integration dispatch.
-* ⚡ **Dynamic Multi-LLM Routing (`core/llm_router.py`)**: Intelligently routes tasks between Groq LLM models to optimize throughput, latency, and token cost:
-  * **`llama-3.1-8b-instant`**: Fast model used for compact transcripts (<3,000 words), pre-extracted summary formatting, and simple Q&A keyword queries.
-  * **`llama-3.3-70b-versatile`**: Powerful model deployed for long/complex transcripts and deep analytical multi-turn Q&A reasoning.
-* 🧠 **Cross-Meeting Vector Memory RAG (`core/memory_service.py`)**: Computes 768-dimensional normalized dense feature embeddings for each meeting and persists them in Neon Postgres (`pgvector`). Enables cross-meeting context retrieval via `/memory/search` and multi-meeting synthesized answers.
-* 💬 **Real-Time Streaming Q&A SSE (`/query/stream`)**: Interactive chat interface powered by Server-Sent Events (SSE) streaming tokens in real time with a dynamic cursor (`▍`), supported by a rule-based fallback matcher.
-* 🎧 **Automatic Audio Chunking (FFmpeg)**: Seamlessly handles audio files of any size. Recordings exceeding Groq's 25MB Whisper limit are automatically segmented into 10-minute lossless chunks using FFmpeg's stream-copy muxer before parallel transcription.
-* 👥 **Speaker Diarization (PyAnnote 3.1)**: Identifies and labels speaker turns (`SPEAKER_00`, `SPEAKER_01`) with timestamp alignment for clear action item and decision attribution.
-* 🎵 **Interactive Audio Player & Transcript Sync**: Stream meeting audio directly from the backend with scrubbing, variable speed controls (`0.75x`–`2.0x`), and synchronized transcript line highlighting.
-* 🔗 **Automatic & Manual Integrations**:
-  * **Jira Cloud**: Creates formatted Jira tickets in Atlassian Document Format (ADF) for identified action items.
-  * **Google Calendar**: Books follow-up meetings via Google Cloud Service Accounts.
-  * **Slack**: Posts summary cards formatted with Slack Block Kit UI components.
-  * **SendGrid**: Sends personalized transactional emails ensuring recipients only receive tasks assigned to them.
-* 🎨 **Modern Next.js 16 Frontend**: Modern workspace UI built with Next.js App Router, React 19, Tailwind CSS v4, TanStack React Query v5, Zod schemas, Recharts, and dark glassmorphic UI design.
+The Meeting Intelligence Agent is an enterprise-grade artificial intelligence platform designed to ingest meeting audio and video recordings of any duration, process them through an agentic multi-stage pipeline, extract structured intelligence, index records into a persistent vector memory layer, generate cross-meeting analytical insights, and synchronize deliverables across workplace communication and productivity tools.
 
 ---
 
-## 🏛️ System Architecture & Diagram Maps
+## Executive Summary
 
-### 1. High-Level System Architecture
+Modern organizations spend countless hours in discussions where critical decisions, commitments, and deadlines are voiced but frequently lost in unorganized notes. The Meeting Intelligence Agent resolves this by serving as an autonomous intelligence layer over company conversations.
+
+The platform provides end-to-end automation from the moment an audio recording is uploaded to the final execution of follow-up tasks:
+
+* Ingests multimedia recordings of arbitrary size and format, applying automated segmentation when files exceed processing limits.
+* Resolves speaker identities through acoustic diarization, attributing spoken dialogue to specific contributors.
+* Transcribes audio using high-accuracy speech models and extracts structured data entities including action items, owners, deadlines, priority levels, and formal decisions with contextual rationale.
+* Synthesizes executive summaries and comprehensive meeting minutes.
+* Generates dense vector representations for cross-meeting semantic search and longitudinal analysis.
+* Incorporates a human-in-the-loop review workflow, allowing project leaders to inspect and edit extracted items before initiating external synchronizations.
+* Dispatches approved deliverables selectively to Atlassian Jira Cloud, Google Calendar, Slack channels, and SendGrid email notifications.
+* Provides a real-time conversational agent capable of answering complex inquiries across single meetings or the entire workspace repository using streaming responses backed by full verbatim transcripts and structured metadata.
+* Displays aggregate metrics and longitudinal trends through an interactive analytics dashboard with a charcoal black theme.
+
+---
+
+## System Architecture
+
+The platform is architected around a decoupled, micro-layered framework comprising a Next.js client interface, a FastAPI application server, a LangGraph agentic workflow engine, and a Neon PostgreSQL database with vector capabilities.
 
 ```mermaid
 graph TB
-    subgraph "Client Layer (Frontend)"
-        UI["Next.js 16 App Router UI"]
-        AQ["TanStack React Query v5"]
-        SSE_Client["EventSource / Fetch SSE Client"]
+    subgraph ClientPresentationLayer ["Client Presentation Layer (Next.js)"]
+        UI["Modern Workspace Interface"]
+        ThemeEngine["Theme Provider (Charcoal Black / Light)"]
+        QueryClient["TanStack React Query Cache Layer"]
+        StreamHandler["Server-Sent Events Stream Consumer"]
+        AnalyticsUI["Recharts Analytics Dashboard"]
     end
 
-    subgraph "API & Security Layer (FastAPI Backend)"
-        GW["FastAPI Gateway (main.py / routes.py)"]
-        AUTH["JWT Auth Guard (core/auth.py)"]
-        RL["SlowAPI Rate Limiter (120 req/min)"]
-        ROUTER["Multi-LLM Router (core/llm_router.py)"]
+    subgraph APIGatewayLayer ["API Gateway and Security Layer (FastAPI)"]
+        Gateway["FastAPI Application Gateway"]
+        AuthGuard["JWT Authentication and Session Guard"]
+        RateLimiter["IP-Based Request Rate Limiter"]
+        HealthService["System Health and Diagnostics"]
     end
 
-    subgraph "Agentic Pipeline (LangGraph)"
-        LG["LangGraph State Engine"]
-        N1["Node 1: Transcribe & Diarize"]
-        N2["Node 2: Extract Info"]
-        N3["Node 3: Generate Summary"]
-        N4["Node 4: DB Save & RAG Vector Index"]
-        N5["Node 5-7: Integrations (Jira/Calendar/Slack/Email)"]
+    subgraph AgenticOrchestrationLayer ["Agentic Orchestration Layer (LangGraph)"]
+        GraphEngine["LangGraph State Engine"]
+        ValidationAgent["Audio Validation and Formatting Agent"]
+        SegmentationAgent["Lossless Audio Chunking Agent"]
+        DiarizationAgent["Speaker Diarization Agent"]
+        TranscriptionAgent["Speech-to-Text Transcription Agent"]
+        ExtractionAgent["Structured Entity Extraction Agent"]
+        SummaryAgent["Executive Synthesis Agent"]
+        StorageAgent["Database Serialization and Vectorization Agent"]
     end
 
-    subgraph "Persistence & Memory Layer"
-        PG[("Neon Postgres DB")]
-        VEC[("pgvector (768-dim Memory RAG)")]
+    subgraph ConversationalIntelligenceLayer ["Conversational Intelligence Layer"]
+        ContextAssembler["Full Meeting Context Assembly Engine"]
+        StreamingEngine["Real-Time Token Streaming Engine"]
+        ConversationalMemory["Multi-Turn Dialogue Memory Buffer"]
+        GlobalSearchEngine["Full-Text and Semantic Search Engine"]
     end
 
-    subgraph "External Cloud Services"
-        GROQ["Groq AI API (Whisper + Llama)"]
-        JIRA["Jira Cloud API"]
-        GCAL["Google Calendar API"]
-        SLACK["Slack Webhooks"]
-        SG["SendGrid Email API"]
+    subgraph PersistenceLayer ["Persistence and Memory Layer"]
+        RelationalDB[("Neon PostgreSQL Relational Store")]
+        VectorStore[("pgvector 768-Dimensional Embedding Index")]
     end
 
-    UI <--> AQ
-    UI <--> SSE_Client
-    AQ <--> GW
-    SSE_Client <--> GW
-    GW --> AUTH
-    GW --> RL
-    GW --> ROUTER
-    GW --> LG
+    subgraph EnterpriseIntegrationLayer ["Enterprise Integration Dispatch Layer"]
+        JiraConnector["Atlassian Jira Cloud Connector"]
+        CalendarConnector["Google Calendar API Connector"]
+        SlackConnector["Slack Block Kit Webhook Connector"]
+        EmailConnector["SendGrid Transactional Email Connector"]
+    end
 
-    LG --> N1 --> N2 --> N3 --> N4 --> N5
-    N1 <--> GROQ
-    N2 <--> ROUTER
-    N3 <--> ROUTER
-    ROUTER <--> GROQ
+    UI --> ThemeEngine
+    UI --> QueryClient
+    UI --> StreamHandler
+    UI --> AnalyticsUI
 
-    N4 --> PG
-    N4 --> VEC
-    N5 --> JIRA
-    N5 --> GCAL
-    N5 --> SLACK
-    N5 --> SG
+    QueryClient --> Gateway
+    StreamHandler --> Gateway
+    AnalyticsUI --> Gateway
+
+    Gateway --> AuthGuard
+    Gateway --> RateLimiter
+    Gateway --> HealthService
+
+    Gateway --> GraphEngine
+    Gateway --> ConversationalIntelligenceLayer
+
+    GraphEngine --> ValidationAgent
+    ValidationAgent --> SegmentationAgent
+    SegmentationAgent --> DiarizationAgent
+    DiarizationAgent --> TranscriptionAgent
+    TranscriptionAgent --> ExtractionAgent
+    ExtractionAgent --> SummaryAgent
+    SummaryAgent --> StorageAgent
+
+    StorageAgent --> RelationalDB
+    StorageAgent --> VectorStore
+
+    ConversationalIntelligenceLayer --> ContextAssembler
+    ContextAssembler --> RelationalDB
+    ContextAssembler --> VectorStore
+    ConversationalIntelligenceLayer --> StreamingEngine
+    ConversationalIntelligenceLayer --> ConversationalMemory
+    ConversationalIntelligenceLayer --> GlobalSearchEngine
+
+    RelationalDB --> EnterpriseIntegrationLayer
+    EnterpriseIntegrationLayer --> JiraConnector
+    EnterpriseIntegrationLayer --> CalendarConnector
+    EnterpriseIntegrationLayer --> SlackConnector
+    EnterpriseIntegrationLayer --> EmailConnector
 ```
 
 ---
 
-### 2. LangGraph Multi-Agent Pipeline Map
+## End-to-End Processing Workflow
+
+The operational lifecycle of a meeting recording proceeds through eight distinct phases, ensuring data integrity, acoustic accuracy, extraction fidelity, and human oversight.
 
 ```mermaid
-graph TD
-    Start([Audio File Upload]) --> Node1["Node 1: transcribe_audio<br/>(Groq Whisper + PyAnnote Diarization)"]
-    
-    Node1 -->|Transcript Produced| Node2["Node 2: extract_information<br/>(Action Items, Decisions, Participants)"]
-    Node1 -->|Audio Invalid/Empty| EndFailed([Terminated: Audio Error])
-    
-    Node2 -->|Extraction Valid| Node3["Node 3: generate_summary<br/>(Short & Detailed Executive Summary)"]
-    Node2 -->|Extraction Failed| EndFailed
-    
-    Node3 -->|Summary Complete| Node4["Node 4: save_to_database & index_memory<br/>(Postgres Insert + pgvector Embedding RAG)"]
-    Node3 -->|Summary Failed| EndFailed
-    
-    Node4 -->|Meeting ID Generated| Node5["Node 5: create_jira_tickets<br/>(Atlassian ADF Tickets)"]
-    Node4 -->|DB Commit Failed| EndFailed
-    
-    Node5 --> Node6["Node 6: book_calendar<br/>(Google Calendar Sync)"]
-    Node6 --> Node7["Node 7: send_notifications<br/>(Slack Block Kit + SendGrid Emails)"]
-    Node7 --> EndSuccess([Pipeline Completed Successfully])
+sequenceDiagram
+    autonumber
+    actor User as Meeting Organizer
+    participant Client as Web Frontend
+    participant Server as API Gateway
+    participant Orchestrator as LangGraph Pipeline
+    participant Database as PostgreSQL and pgvector
+    participant Integrations as External Services
 
-    style Start fill:#4B6CB7,stroke:#FFF,stroke-width:2px,color:#FFF
-    style Node4 fill:#198754,stroke:#FFF,stroke-width:2px,color:#FFF
-    style EndSuccess fill:#28A745,stroke:#FFF,stroke-width:2px,color:#FFF
-    style EndFailed fill:#DC3545,stroke:#FFF,stroke-width:2px,color:#FFF
-```
+    User->>Client: Upload Audio File
+    Client->>Server: Multipart Upload Request
+    Server->>Server: Validate File and Store Locally
+    Server-->>Client: Return Job Identifier
 
----
+    Client->>Server: Initiate Processing Job
+    Server->>Orchestrator: Launch LangGraph State Machine
 
-### 3. Cross-Meeting RAG & Analytics Flow Map
-
-```mermaid
-graph LR
-    subgraph "Query / Analytics Inputs"
-        Q_User["User Query / Q&A"]
-        Q_Dash["Analytics Page"]
+    activate Orchestrator
+    Orchestrator->>Orchestrator: Check Duration and File Size
+    opt File Exceeds 25 MB
+        Orchestrator->>Orchestrator: Segment into Lossless 10-Minute Chunks
     end
 
-    subgraph "Service Engine"
-        Router["LLM Router Engine"]
-        MemService["MemoryService RAG Engine"]
-        AnalyticsAgg["Analytics Aggregator"]
+    Orchestrator->>Orchestrator: Perform Speaker Diarization
+    Orchestrator->>Orchestrator: Run Speech-to-Text Transcription
+    Orchestrator->>Orchestrator: Extract Action Items, Decisions, Participants
+    Orchestrator->>Orchestrator: Compile Short and Detailed Summaries
+    Orchestrator->>Database: Persist Meeting Records and Vector Embeddings
+    deactivate Orchestrator
+
+    Server-->>Client: Processing Complete Notification
+    Client->>Database: Retrieve Extracted Entities
+
+    User->>Client: Review Summary and Action Items
+    User->>Client: Update Speaker Names or Item Owners
+
+    opt Dispatch to External Tools
+        User->>Client: Trigger Multi-Channel Synchronization
+        Client->>Server: Dispatch Request with Selected Channels
+        Server->>Integrations: Create Jira Tickets
+        Server->>Integrations: Book Calendar Events
+        Server->>Integrations: Broadcast Slack Notification
+        Server->>Integrations: Transmit Personalized Emails
+        Integrations-->>Server: Return Dispatch Confirmations
+        Server-->>Client: Update Notification Log
     end
 
-    subgraph "Vector & Data Storage"
-        V_Memory[("pgvector Embeddings<br/>(Cosine Distance)")]
-        DB_Tables[("Postgres Tables<br/>(meetings, action_items, participants)")]
-    end
-
-    subgraph "Output Generation"
-        SSE["SSE Token Stream (/query/stream)"]
-        SummaryCard["Summary & Leaderboards"]
-        Recharts["Recharts Visualizations"]
-    end
-
-    Q_User --> Router
-    Router --> MemService
-    MemService <--> V_Memory
-    MemService --> SSE
-
-    Q_Dash --> AnalyticsAgg
-    AnalyticsAgg <--> DB_Tables
-    AnalyticsAgg --> SummaryCard
-    AnalyticsAgg --> Recharts
+    User->>Client: Open Conversational Agent Chat
+    Client->>Server: Stream Query with Meeting Context
+    Server->>Database: Fetch Verbatim Transcript and Details
+    Server-->>Client: Stream Real-Time SSE Tokens to User
 ```
 
 ---
 
-### 4. Database Entity-Relationship (ER) Diagram
+## Core Functional Modules
 
-```mermaid
-erDiagram
-    users ||--o{ meetings : "owns"
-    users ||--o{ processing_jobs : "launches"
-    meetings ||--o{ action_items : "contains"
-    meetings ||--o{ decisions : "contains"
-    meetings ||--o{ participants : "includes"
-    meetings ||--o{ notifications_log : "records"
+### 1. Audio Ingestion and Adaptive Chunking
 
-    users {
-        string id PK
-        string email UK
-        string hashed_password
-        string full_name
-        datetime created_at
-    }
+The ingestion system accepts recordings in diverse audio and video formats, including MP3, WAV, M4A, FLAC, OGG, WEBM, and MP4.
 
-    meetings {
-        string id PK
-        string user_id FK
-        string title
-        string audio_filename
-        int duration_minutes
-        text short_summary
-        text detailed_summary
-        text transcript
-        text diarized_transcript
-        vector transcript_embedding
-        string embedding_status
-        datetime created_at
-    }
+When audio recordings exceed standard processing constraints, the pipeline activates an adaptive segmentation routine. Utilizing stream-copy muxing, the file is divided into consecutive segments of uniform duration without re-encoding, preserving original acoustic fidelity while circumventing payload limitations. The resulting chunks are processed sequentially, and their timestamped transcripts are consolidated into a unified dialogue stream.
 
-    action_items {
-        string id PK
-        string meeting_id FK
-        text description
-        string owner
-        string due_date
-        string priority
-        string jira_ticket_id
-        string status
-        datetime created_at
-    }
+### 2. Speaker Diarization and Identity Resolution
 
-    decisions {
-        string id PK
-        string meeting_id FK
-        text description
-        text context
-        datetime created_at
-    }
+Acoustic diarization analyzes spectral features to detect speech activity and distinguish individual voices.
 
-    participants {
-        string id PK
-        string meeting_id FK
-        string name
-        string email
-        datetime created_at
-    }
+* Spoken segments are tagged with distinct speaker identifiers along with precise start and end millisecond timestamps.
+* Dialogue lines are organized sequentially to reflect the natural conversational flow.
+* The web interface includes a Speaker Resolution tool that enables users to map raw labels to actual team member identities, automatically rewriting the stored transcript with clean speaker attribution.
 
-    notifications_log {
-        string id PK
-        string meeting_id FK
-        string type
-        string status
-        text detail
-        datetime created_at
-    }
+### 3. Structured Intelligence Extraction
 
-    processing_jobs {
-        string id PK
-        string user_id FK
-        string meeting_id FK
-        string status
-        json completed_nodes
-        json node_timings
-        datetime started_at
-        datetime completed_at
-    }
-```
+Rather than treating meeting transcripts as unstructured prose, specialized extraction nodes parse the conversation into typed entities:
+
+* Action Items: Specific tasks extracted with descriptive titles, designated owners, deadlines, priority levels (High, Medium, Low), and current status (Open, In Progress, Done).
+* Key Decisions: Crucial technical, operational, or business agreements captured alongside their contextual rationale.
+* Meeting Participants: Comprehensive list of active contributors detected during the discussion, with editable contact email addresses for automated notifications.
+
+### 4. Executive Summarization
+
+The summarization module generates two complementary tiers of meeting synthesis:
+
+* Executive Overview: A concise, high-level synopsis highlighting key outcomes, blockers, and primary objectives for executive leadership.
+* Detailed Minutes: A comprehensive, thematic breakdown covering detailed discussion threads, alternatives considered, technical justifications, and planned next steps.
+
+### 5. Persistent Storage and Vector Memory
+
+Processed records are committed to a serverless PostgreSQL database running in the cloud with vector extension support.
+
+* Relational integrity is enforced across users, meetings, action items, decisions, participants, and notification logs.
+* Normalized dense vector representations are generated for meeting content and stored in an indexed vector column.
+* Vector similarity search enables retrieval of related historical discussions, supporting semantic search and longitudinal inquiries.
+
+### 6. Human-in-the-Loop Governance and Multi-Channel Dispatch
+
+To prevent erroneous automated dispatches, the platform enforces a human-in-the-loop review mechanism:
+
+* After processing, the pipeline pauses external synchronizations and presents the extracted deliverables to the organizer.
+* The organizer can edit action item descriptions, reassign owners, adjust due dates, update participant emails, and remove non-essential items.
+* Once verified, the organizer selectively initiates dispatch to any combination of connected services:
+  * Atlassian Jira Cloud: Generates structured issue tickets formatted in Atlassian Document Format with assigned owners, priority mappings, and deadlines.
+  * Google Calendar: Schedules follow-up review sessions via service account authorization, adding meeting details and participant invites.
+  * Slack: Posts rich notification cards formatted with Block Kit components, displaying summaries, top decisions, and pending action items.
+  * SendGrid Email: Transmits individualized email summaries ensuring participants receive their assigned tasks directly in their inbox.
+
+### 7. Conversational Intelligence Agent
+
+The platform features an interactive intelligence chatbot accessible from any page:
+
+* Whole-Context Awareness: Unlike conventional chatbot architectures that truncate inputs to small context windows, the agent assembles the comprehensive meeting dossier—including up to sixty thousand characters of verbatim diarized transcript, detailed minutes, action items with owners and deadlines, and decision records.
+* Real-Time Token Streaming: Responses are streamed back via Server-Sent Events (SSE), delivering immediate progressive text rendering with dynamic typing indicators.
+* Context Scope Switching: Users can toggle between scoping queries to a specific meeting or searching across all workspace records.
+* Multi-Turn Conversational Memory: Maintains preceding conversational exchanges, enabling iterative drill-downs, clarifying questions, and contextual follow-ups.
+* Rich Text Rendering: Structured responses format headers, bullet points, numbered lists, and code blocks cleanly, complete with citation badges and one-click clipboard copying.
+
+### 8. Cross-Meeting Analytics Engine
+
+The analytics dashboard aggregates historical meeting data to deliver actionable insights into organizational productivity:
+
+* Executive Productivity Metrics: Tracks total meetings recorded, cumulative discussion hours, total action items generated, overall task completion rate, and comparative seven-day versus thirty-day trends.
+* Meeting and Action Item Velocity: Visualizes weekly and monthly meeting frequencies against completed action items over time.
+* Participant Contribution Distribution: Quantifies attendance volume and assigned action item burdens across team members to highlight workload imbalances.
+* Task Status Allocation: Displays real-time distributions of open, in-progress, completed, and overdue commitments.
+* Recurring Discussion Topics: Extracts and ranks prominent discussion keywords and themes across all recorded sessions.
 
 ---
 
-## 🗺️ Future Roadmap & Architectural Evolution
+## User Interface Design and Experience
 
-Based on [IMPROVEMENT_ROADMAP.md](file:///c:/Agentic%20AI%20Project/IMPROVEMENT_ROADMAP.md), the system is evolving through planned phases to add real-time streaming, multi-turn chat memory, global search, and production infrastructure:
+The frontend is constructed using modern web design principles to provide an executive-level visual experience:
 
-```mermaid
-graph TD
-    P1["Phase 1: JWT Auth & Security<br/>(COMPLETED v2.0.0)"] --> P4["Phase 4: Analytics Dashboard<br/>(COMPLETED v2.1.0)"]
-    P4 --> P2["Phase 2: WebSocket Live Stepper<br/>(PLANNED)"]
-    P2 --> P3["Phase 3: Multi-Turn Agent Memory<br/>(PLANNED)"]
-    P3 --> P5["Phase 5: Global Search & Speaker ID<br/>(PLANNED)"]
-    P5 --> P6["Phase 6: Docker & CI/CD Hardening<br/>(PLANNED)"]
-    P6 --> P7["Phase 7: Advanced Voice & PDF Export<br/>(STRETCH)"]
-
-    style P1 fill:#28A745,stroke:#FFF,color:#FFF
-    style P4 fill:#28A745,stroke:#FFF,color:#FFF
-    style P2 fill:#FF9F43,stroke:#FFF,color:#FFF
-    style P3 fill:#FF9F43,stroke:#FFF,color:#FFF
-    style P5 fill:#17A2B8,stroke:#FFF,color:#FFF
-    style P6 fill:#17A2B8,stroke:#FFF,color:#FFF
-    style P7 fill:#6C757D,stroke:#FFF,color:#FFF
-```
-
-### Planned Phase Overview
-
-| Phase | Target Area | Key Enhancements | Files / Components Affected |
-|-------|-------------|------------------|-----------------------------|
-| **Phase 2** | Real-Time Pipeline Progress | WebSocket connection manager (`ws_manager.py`) pushing live node completion step events directly to an animated frontend step tracker component. | `core/ws_manager.py`, `api/routes.py`, `components/processing/pipeline-tracker.tsx` |
-| **Phase 3** | Multi-Turn Conversational Memory | Database-backed rolling chat session history (`ChatSession` table) allowing follow-up context queries (e.g. *"who owns the second item?"*). | `db/models.py`, `api/routes.py`, `components/chat/chat-suggestions.tsx` |
-| **Phase 5A** | Global Search | Postgres `tsvector` full-text search combined with `/memory/search` semantic similarity toggle across meetings, decisions, and action items. | `api/routes.py`, `app/(app)/search/` |
-| **Phase 5B** | Speaker Identity Resolution | Mapping speaker labels (`SPEAKER_00` → "Alice Chen") with retroactive transcript rewriting on save. | `db/models.py`, `app/(app)/meetings/[id]/` |
-| **Phase 5C** | Observability & Error Tracking | Sentry exception capture integration (`sentry-sdk`) and LangSmith node latency tracking. | `api/main.py`, `graph/agent_graph.py` |
-| **Phase 6** | Production Hardening | Docker & Docker Compose configuration, Alembic database migrations, and GitHub Actions CI/CD pipeline. | `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml` |
-| **Phase 7** | Voice & Advanced Workflow | In-browser live audio recording (`MediaRecorder`), PDF summary export, and cron deadline email reminders. | `components/audio/`, export utilities |
+* Charcoal Black Dark Mode: A bespoke dark theme engineered with deep charcoal canvas tones, matte surface cards, subtle borders, and warm amber accents, providing optimal contrast and reduced eye strain during extended analysis.
+* Editorial Light Mode: A crisp, warm-toned light theme utilizing clean typography and refined surface styling.
+* Instant Theme Switcher: A prominent, accessible switch button in the navigation header that toggles between Charcoal Black and Light mode with immediate rendering and local storage persistence.
+* Zero Flash of Unstyled Theme: Early initialization scripts ensure the interface renders with the user's preferred theme without visual flickering during initial page load.
+* Interactive Audio Player: Native audio playback interface featuring scrubbing, variable speed control from 0.75x to 2.0x, and synchronized transcript highlighting.
+* Global Intelligence Search: Unified search modal offering full-text search and semantic vector discovery across meetings, decisions, and tasks.
 
 ---
 
-## 🌐 API Reference Map
+## Data Models and Relational Schema
 
-### Authentication Endpoints (Public)
-* `POST /auth/register` — Register a new account (`email`, `password`, `full_name`) -> returns JWT token & user object.
-* `POST /auth/login` — Authenticate user (`email`, `password`) -> returns JWT token & user object.
-* `POST /auth/token` — OAuth2 compatible form login endpoint.
-* `GET /auth/me` — Retrieve current authenticated user profile.
+The platform organizes information across seven interconnected database entities:
 
-### Meeting & Processing Endpoints (Protected)
-* `POST /meeting/upload` — Upload meeting audio file (MP3, WAV, M4A, FLAC, OGG, WEBM, MP4).
-* `POST /meetings/process` — Start asynchronous background processing pipeline job.
-* `GET /meetings/status/{job_id}` — Get background job progress and node completion state.
-* `GET /meetings` — List meetings belonging to the authenticated user.
-* `GET /meetings/{meeting_id}` — Get complete meeting details (action items, decisions, participants).
-* `GET /meetings/{meeting_id}/audio` — Stream audio with `Accept-Ranges` byte-seeking support.
-* `PATCH /meetings/{meeting_id}/action-items/{item_id}` — Update action item status (`open`, `in_progress`, `done`).
-* `PATCH /meetings/{meeting_id}/participants/{participant_id}` — Save participant email.
-* `DELETE /meetings/{meeting_id}` — Delete meeting record.
-
-### Analytics Endpoints (Protected)
-* `GET /analytics/summary` — Returns meeting totals, average duration, action completion rates, and 7d/30d comparison stats.
-* `GET /analytics/participants` — Returns participant leaderboard with attendance count and action items load.
-* `GET /analytics/timeline?period=weekly|monthly` — Returns meeting frequency and completion data points over time.
-* `GET /analytics/action-items` — Returns status breakdown (`open`, `in_progress`, `done`, `overdue`) overall and per owner.
-* `GET /analytics/topics` — Returns top recurring keywords and topic frequency extracted from all meetings.
-
-### Conversational & Memory Endpoints (Protected)
-* `POST /query` — Non-streaming LLM Q&A with multi-LLM router & cross-meeting RAG context.
-* `POST /query/stream` — Real-time token streaming Q&A via Server-Sent Events (SSE).
-* `POST /memory/search` — Search cross-meeting vector memory using semantic similarity.
-
-### Integration Dispatch Endpoints (Protected)
-* `POST /meetings/{meeting_id}/send/email` — Send SendGrid transactional emails.
-* `POST /meetings/{meeting_id}/send/slack` — Post summary cards to Slack.
-* `POST /meetings/{meeting_id}/send/jira` — Create Jira Cloud tickets.
-* `POST /meetings/{meeting_id}/send/calendar` — Book follow-up meeting on Google Calendar.
+| Entity Name | Primary Key | Foreign Keys | Key Attributes | Functional Role |
+|---|---|---|---|---|
+| Users | Identifier | None | Email, Hashed Password, Full Name, Created Timestamp | Authentication, authorization, and data isolation |
+| Meetings | Identifier | User Identifier | Title, Audio Filename, Duration Minutes, Short Summary, Detailed Summary, Raw Transcript, Diarized Transcript, Vector Embedding, Embedding Status, Created Timestamp | Core meeting record storing transcripts and vector representations |
+| Action Items | Identifier | Meeting Identifier | Description, Owner, Due Date, Priority, Jira Ticket Identifier, Status, Created Timestamp | Trackable deliverables with workflow statuses and external ticket linkages |
+| Decisions | Identifier | Meeting Identifier | Description, Contextual Rationale, Created Timestamp | Formal agreements and organizational decisions recorded during discussions |
+| Participants | Identifier | Meeting Identifier | Contributor Name, Email Address, Speaker Label, Created Timestamp | Contributor records linking acoustic speaker profiles to contact details |
+| Notifications Log | Identifier | Meeting Identifier | Channel Type, Delivery Status, Detailed Payload, Created Timestamp | Audit trail of external integration dispatches |
+| Processing Jobs | Identifier | User Identifier, Meeting Identifier | Job Status, Completed Pipeline Nodes, Node Execution Timings, Started Timestamp, Completed Timestamp | State tracking for asynchronous background pipeline executions |
 
 ---
 
-## 🛠️ Technology Stack
+## System Configuration Specifications
 
-### Backend
-* **Framework**: FastAPI (Python 3.12+)
-* **Security & Auth**: PyJWT, Passlib (bcrypt), SlowAPI rate limiting
-* **Agent Pipeline**: LangGraph 0.2.55, LangChain Core
-* **LLM & Transcription**: Groq (`whisper-large-v3`, `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
-* **LLM Router**: Custom `LLMRouter` (`core/llm_router.py`)
-* **Vector Memory (RAG)**: `MemoryService` (`core/memory_service.py`), Neon Postgres `pgvector`
-* **Speaker Diarization**: PyAnnote.audio 3.1, FFmpeg
-* **Database & ORM**: Neon Serverless Postgres with `pgvector`, SQLAlchemy v2 (Asyncpg driver)
-* **Integrations**: Atlassian Python API, SendGrid SDK, Slack SDK, Google API Python Client
-* **Test Suite**: Pytest + pytest-asyncio (Passing unit & integration tests)
+The platform is configured via environment variables organized by functional layer.
 
-### Frontend
-* **Framework**: Next.js 16 (React 19, TypeScript)
-* **Auth**: Context AuthProvider (`lib/api/auth.ts`) & protected page router
-* **Styling**: Tailwind CSS v4, Lucide React icons, Glassmorphism design tokens
-* **Data Fetching & State**: TanStack React Query v5
-* **Charts & Visualizations**: Recharts (`^2.12.7`)
-* **Form & Toast Validation**: Zod, Sonner toasts
-* **Testing & Verification**: Vitest, Next.js production build compiler
+### Application and Security Settings
 
----
+| Variable Name | Description | Default / Format | Required |
+|---|---|---|---|
+| APP_ENV | Runtime environment stage | development / production | Yes |
+| SECRET_KEY | Cryptographic secret for signing JWT tokens | Alphanumeric secret string | Yes |
+| ACCESS_TOKEN_EXPIRE_MINUTES | Lifetime duration of issued JWT authentication tokens | Integer representing minutes | No |
 
-## 📂 Repository Directory Structure Map
+### Database and Vector Storage Settings
 
-```
-├── Backend/                 # FastAPI + LangGraph + SQLAlchemy service
-│   ├── agents/              # LangGraph node agents (transcription, extraction, summary)
-│   ├── api/                 # FastAPI routes, auth routes, analytics routes, SSE streaming & middleware
-│   │   ├── auth_routes.py   # Auth endpoints (/auth/register, /auth/login, /auth/me)
-│   │   ├── main.py          # CORS, SlowAPI Rate Limiter, GZip, Exception handlers
-│   │   └── routes.py        # Protected meeting, analytics & intelligence API routes
-│   ├── core/                # Core system modules
-│   │   ├── auth.py          # JWT creation/verification & get_current_user dependency
-│   │   ├── config.py        # Typed settings loader (Pydantic BaseSettings)
-│   │   ├── llm_router.py    # Multi-LLM model routing engine (8B vs 70B)
-│   │   ├── logging.py       # Structlog structured JSON logger
-│   │   └── memory_service.py# Vector embedding generator & pgvector RAG memory search
-│   ├── db/                  # SQLAlchemy ORM models (User, Meeting, ActionItem, etc.)
-│   ├── graph/               # LangGraph state graph definition & node edge flow
-│   ├── models/              # Pydantic validation schemas & API data contracts
-│   ├── tools/               # External integration connectors (Jira, Slack, Calendar, SendGrid)
-│   └── tests/               # Pytest automated test suite (test_auth, test_routes, test_analytics, test_memory)
-│
-├── frontend/                # Next.js 16 App Router UI
-│   ├── app/                 # App Router pages
-│   │   ├── (auth)/          # Authentication pages (/login, /register)
-│   │   ├── (app)/           # Protected workspace (/dashboard, /meetings, /agent-chat, /analytics)
-│   │   └── layout.tsx       # Root layout with AuthProvider & ToastProvider
-│   ├── components/          # Analytics charts, Sidebar, Navbar, AudioPlayer, ChatDrawer
-│   │   └── analytics/       # Analytics Dashboard chart and table components
-│   ├── lib/                 # API Client, Auth helpers, Analytics API, custom React Query & SSE hooks
-│   └── tests/               # Vitest client testing suite
-│
-├── README.md                # Unified Project Documentation
-├── API_INTEGRATION_MAP.md   # Endpoint contracts mapping backend endpoints to frontend hooks
-├── IMPLEMENTATION_NOTES.md  # Architectural decisions & design log
-└── IMPROVEMENT_ROADMAP.md   # Project status snapshot & improvement phases
-```
+| Variable Name | Description | Default / Format | Required |
+|---|---|---|---|
+| DATABASE_URL | Asynchronous PostgreSQL connection string with vector support | postgresql+asyncpg connection URI | Yes |
+| DATABASE_URL_SYNC | Synchronous PostgreSQL connection string for administrative migrations | postgresql+psycopg2 connection URI | Yes |
+
+### Speech, Diarization, and Inference Settings
+
+| Variable Name | Description | Default / Format | Required |
+|---|---|---|---|
+| OPERNROUTER_API_KEY | API access key for conversational intelligence and summarization | Secret key string | Yes |
+| OPENROUTER_MODEL | Primary language model identifier for reasoning and chat | Standard model identifier | No |
+| GROQ_API_KEY | API key for high-speed speech transcription and language processing | Secret key string | Yes |
+| HF_TOKEN | HuggingFace user access token for acoustic diarization model weights | User access token | No |
+| DIARIZATION_ENABLED | Toggle enabling or bypassing speaker diarization during pipeline runs | Boolean string | No |
+
+### Enterprise Integration Settings
+
+| Variable Name | Description | Default / Format | Required |
+|---|---|---|---|
+| JIRA_URL | Base URL of the Atlassian Jira Cloud instance | Fully qualified URL | No |
+| JIRA_EMAIL | Account email associated with the Jira API token | Valid email address | No |
+| JIRA_API_TOKEN | API authentication token generated in Atlassian account | Secret token string | No |
+| JIRA_PROJECT_KEY | Target Jira project key for created issues | Short uppercase identifier | No |
+| GOOGLE_CALENDAR_ID | Target Google Calendar identifier for scheduled follow-ups | Email or calendar identifier | No |
+| GOOGLE_CALENDAR_CREDENTIALS_JSON | Google Cloud Service Account JSON credentials | Serialized JSON string | No |
+| SLACK_WEBHOOK_URL | Incoming webhook URL for posting messages to Slack channels | HTTPS webhook URL | No |
+| SENDER_EMAIL | Verified sender address for outbound transactional emails | Valid email address | No |
+| SENDGRID_API_KEY | API key for authenticating with the SendGrid delivery service | Secret key string | No |
+
+### Client Settings
+
+| Variable Name | Description | Default / Format | Required |
+|---|---|---|---|
+| NEXT_PUBLIC_API_BASE_URL | Base URL connecting the frontend client to the backend API gateway | Fully qualified URL | Yes |
 
 ---
 
-## 🚀 Quick Start Guide
+## Quality Assurance and Verification
 
-### 1. System Requirements
-* **Python**: 3.10+
-* **Node.js**: 18+
-* **FFmpeg**: Required for audio chunking of files >25MB.
-  * Windows: `winget install ffmpeg`
-  * macOS: `brew install ffmpeg`
-  * Linux: `sudo apt install ffmpeg`
+The platform maintains a multi-faceted testing and verification regimen:
 
-### 2. Backend Setup
-
-1. Navigate to `Backend`, create a virtual environment, and install dependencies:
-   ```bash
-   cd Backend
-   python -m venv venv
-
-   # Windows (PowerShell)
-   .\venv\Scripts\Activate.ps1
-   # macOS/Linux
-   source venv/bin/activate
-
-   pip install -r requirements.txt
-   ```
-
-2. Create `Backend/.env`:
-   ```env
-   APP_ENV=development
-   SECRET_KEY=your-secure-jwt-secret-key
-   GROQ_API_KEY=gsk_your_groq_api_key
-
-   # Multi-LLM Model Routing Defaults
-   LLM_FAST_MODEL=llama-3.1-8b-instant
-   LLM_POWERFUL_MODEL=llama-3.3-70b-versatile
-   LLM_ROUTING_WORD_THRESHOLD=3000
-
-   # Postgres Database URLs (Neon Postgres)
-   DATABASE_URL=postgresql+asyncpg://user:pass@host/db?sslmode=require
-   DATABASE_URL_SYNC=postgresql+psycopg2://user:pass@host/db?sslmode=require
-
-   # Speaker Diarization (Optional)
-   HF_TOKEN=your_huggingface_access_token
-   DIARIZATION_ENABLED=true
-
-   # Integration Credentials (Optional)
-   SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-   SENDGRID_API_KEY=SG...
-   JIRA_URL=https://yourcompany.atlassian.net
-   JIRA_EMAIL=dev@yourcompany.com
-   JIRA_API_TOKEN=your_jira_token
-   GOOGLE_CALENDAR_CREDENTIALS_JSON='{"type": "service_account", ...}'
-   ```
-
-3. Start the FastAPI server:
-   ```bash
-   uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-   * Access interactive Swagger docs at `http://localhost:8000/docs`.
-
-### 3. Frontend Setup
-
-1. Navigate to `frontend` and install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Create `frontend/.env.local`:
-   ```env
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   ```
-
-3. Launch Next.js development server:
-   ```bash
-   npm run dev
-   ```
-   * Open `http://localhost:3000` in your web browser.
+* Backend Test Suite: Comprehensive unit and integration test coverage across authentication, authorization guards, meeting data operations, analytical aggregation endpoints, vector similarity search, and Server-Sent Events streaming routes.
+* Frontend Static Analysis and Type Verification: Full TypeScript compilation checking ensuring strict contract compliance across all API schemas, client state hooks, and visual components.
+* End-to-End Streaming Validation: Automated test scripts verifying real-time token stream reception, SSE header compliance, and context injection fidelity against live database records.
+* Diagnostic Health Checks: Detailed health endpoint evaluating database connectivity, speech model availability, and external service configuration states.
 
 ---
 
-## 🧪 Testing
+## Security and Compliance Architecture
 
-### Backend Test Suite (Pytest)
-Runs full integration and unit tests using an in-memory SQLite database:
-```bash
-cd Backend
-.\venv\Scripts\pytest.exe
-```
-
-### Frontend Testing & Production Build
-```bash
-cd frontend
-npm test        # Vitest test suite
-npm run build   # Production Next.js build verification
-```
-
----
-
-## 📜 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
+* Strict Data Isolation: All meeting records, transcripts, action items, analytics, and vector embeddings are tied directly to authenticated user accounts, ensuring multi-tenant isolation.
+* Password Protection: Passwords are encrypted using salted bcrypt hashing before persistence; raw credentials are never logged or stored.
+* Rate Limiting: IP-based sliding-window rate limiters prevent API abuse and brute-force attempts on public endpoints.
+* Token Verification: Stateless JSON Web Tokens validate user identity on every protected route with automatic expiration handling.
+* Input Validation: Inbound network payloads are validated using strict Pydantic models on the backend and Zod schemas on the frontend.
