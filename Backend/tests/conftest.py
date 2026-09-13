@@ -138,10 +138,11 @@ async def async_client(db_session: AsyncSession):
 @pytest_asyncio.fixture()
 async def seeded_meeting(db_session: AsyncSession, seeded_user):
     """Insert a minimal Meeting row and return its id."""
+    import uuid
     from db.models import Meeting
 
     meeting = Meeting(
-        id="test-meeting-id",
+        id=f"meeting-{uuid.uuid4().hex[:8]}",
         user_id=seeded_user.id,
         title="Weekly Standup",
         audio_filename="standup.mp3",
@@ -158,10 +159,11 @@ async def seeded_meeting(db_session: AsyncSession, seeded_user):
 @pytest_asyncio.fixture()
 async def seeded_action_item(db_session: AsyncSession, seeded_meeting):
     """Insert one ActionItem for the seeded meeting."""
+    import uuid
     from db.models import ActionItem
 
     item = ActionItem(
-        id="test-item-id",
+        id=f"item-{uuid.uuid4().hex[:8]}",
         meeting_id=seeded_meeting.id,
         description="Write unit tests for the API",
         owner="Alice Chen",
@@ -177,10 +179,11 @@ async def seeded_action_item(db_session: AsyncSession, seeded_meeting):
 @pytest_asyncio.fixture()
 async def seeded_participant(db_session: AsyncSession, seeded_meeting):
     """Insert one Participant for the seeded meeting."""
+    import uuid
     from db.models import Participant
 
     p = Participant(
-        id="test-participant-id",
+        id=f"participant-{uuid.uuid4().hex[:8]}",
         meeting_id=seeded_meeting.id,
         name="Alice Chen",
         email="alice@example.com",

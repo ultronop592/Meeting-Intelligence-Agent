@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Transcript word count cutoff: transcripts with fewer words use the fast
     # model for extraction.  Override via LLM_ROUTING_WORD_THRESHOLD in .env.
     llm_routing_word_threshold: int = 3000
+
+    # --- OpenRouter (Agent Chat Chatbot) -------------------------------------
+    openrouter_api_key:  str = ""
+    opernrouter_api_key: str = ""  # alias for existing .env spelling
+    openrouter_model:    str = "meta-llama/llama-3.3-70b-instruct"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
  
     # --- Neon (Postgres) -----------------------------------------------------
     database_url:      str   # async  URL  — postgresql+asyncpg://...
@@ -112,6 +118,10 @@ class Settings(BaseSettings):
     @property
     def langsmith_enabled(self) -> bool:
         return self.langchain_tracing_v2 and bool(self.langchain_api_key)
+
+    @property
+    def effective_openrouter_api_key(self) -> str:
+        return (self.openrouter_api_key or self.opernrouter_api_key or "").strip()
  
  
 @lru_cache()

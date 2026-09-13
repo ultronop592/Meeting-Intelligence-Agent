@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { AudioPlayer } from "@/components/meeting/audio-player";
+import type { ChatMessage } from "@/types/api";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
 
@@ -25,7 +26,7 @@ export default function MeetingDetailPage() {
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
   const { streamQuery, isStreaming } = useAgentChatStream();
   const [message, setMessage] = useState("");
-  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean }[]>([]);
+  const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean; sources?: string[] }[]>([]);
   const [daysFromNow, setDaysFromNow] = useState(7);
   const [savingActionItemId, setSavingActionItemId] = useState<string | null>(null);
   const [savingParticipantId, setSavingParticipantId] = useState<string | null>(null);
@@ -127,6 +128,11 @@ export default function MeetingDetailPage() {
     const content = message.trim();
     if (!content || !meetingId || isStreaming) return;
 
+    const history: ChatMessage[] = thread
+      .filter((t) => !t.isStreaming && t.message.trim().length > 0)
+      .slice(-8)
+      .map((t) => ({ role: t.role, content: t.message }));
+
     setThread((prev) => [
       ...prev,
       { role: "user", message: content },
@@ -136,7 +142,7 @@ export default function MeetingDetailPage() {
 
     try {
       await streamQuery(
-        { question: content, meeting_id: meetingId },
+        { question: content, meeting_id: meetingId, history },
         (chunk) => {
           setThread((prev) => {
             const updated = [...prev];
@@ -150,7 +156,7 @@ export default function MeetingDetailPage() {
             return updated;
           });
         },
-        () => {
+        (sources) => {
           setThread((prev) => {
             const updated = [...prev];
             const lastIndex = updated.length - 1;
@@ -158,6 +164,7 @@ export default function MeetingDetailPage() {
               updated[lastIndex] = {
                 ...updated[lastIndex],
                 isStreaming: false,
+                sources: sources && sources.length > 0 ? sources : undefined,
               };
             }
             return updated;
@@ -620,6 +627,7 @@ export default function MeetingDetailPage() {
                 role={entry.role}
                 message={entry.message}
                 isStreaming={entry.isStreaming}
+                sources={entry.sources}
               />
             ))
           )}

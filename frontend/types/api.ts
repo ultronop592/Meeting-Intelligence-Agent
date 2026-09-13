@@ -138,9 +138,15 @@ export type SendResult = {
   [key: string]: unknown;
 };
 
+export type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
 export type AgentQueryRequest = {
   question: string;
   meeting_id?: string | null;
+  history?: ChatMessage[];
 };
 
 export type AgentQueryResponse = {

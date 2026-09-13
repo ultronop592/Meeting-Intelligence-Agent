@@ -299,10 +299,16 @@ class HealthResponse(BaseModel):
     database: str = "neon"
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Role: 'user', 'assistant', or 'system'")
+    content: str = Field(..., description="Message text")
+
+
 class AgentQueryRequest(BaseModel):
-    """POST /query"""
+    """POST /query and POST /query/stream"""
     question: str = Field(..., min_length=1)
     meeting_id: Optional[str] = None
+    history: Optional[list[ChatMessage]] = Field(default_factory=list)
 
 
 class AgentQueryResponse(BaseModel):
