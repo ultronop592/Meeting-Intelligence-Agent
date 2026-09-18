@@ -6,12 +6,13 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current_user
+from core.limiter import limiter
 from core.config import settings
 from db.database import (
     AsyncSessionLocal,
@@ -80,12 +81,24 @@ def _utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _verify_meeting_ownership(meeting: Meeting, current_user: User) -> None:
+    """Ensure that the requesting user owns the meeting.
+    Allows access if meeting.user_id matches current_user.id or is None (legacy pre-auth records).
+    """
+    if meeting.user_id and meeting.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access or modify this meeting.",
+        )
+
+
 # =============================================================================
 # UPLOAD
 # =============================================================================
 
 @router.post("/meeting/upload", tags=["meetings"])
-async def upload_audio(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def upload_audio(request: Request, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     lower_name = (file.filename or "").lower()
     suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS:
@@ -243,6 +256,11 @@ async def get_processing_status(job_id: str, current_user: User = Depends(get_cu
     job = await get_processing_job(job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
+    if job.get("user_id") and job["user_id"] != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this job status.",
+        )
     return job
 
 
@@ -290,6 +308,7 @@ async def get_meeting_details(
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     action_items = (
         await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id).order_by(DBActionItem.created_at))
@@ -315,7 +334,13 @@ async def update_action_item(
     item_id: str,
     payload: UpdateActionItemRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
+
     item = await db.get(DBActionItem, item_id)
     if not item or item.meeting_id != meeting_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action item not found")
@@ -330,7 +355,13 @@ async def update_participant_email(
     participant_id: str,
     email: str = Query(..., min_length=3),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
+
     participant = await db.get(Participant, participant_id)
     if not participant or participant.meeting_id != meeting_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participant not found")
@@ -340,10 +371,15 @@ async def update_participant_email(
 
 
 @router.delete("/meetings/{meeting_id}", tags=["meetings"])
-async def delete_meeting(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_meeting(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
     await db.delete(meeting)
     await db.flush()
     return {"deleted": True, "meeting_id": meeting_id}
@@ -354,11 +390,16 @@ async def delete_meeting(meeting_id: str, db: AsyncSession = Depends(get_db)):
 # =============================================================================
 
 @router.post("/meetings/{meeting_id}/send/email", tags=["meetings"])
-async def send_email(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def send_email(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Send personalised emails to all participants who have email addresses stored."""
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     action_items_rows = (
         await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
@@ -408,11 +449,16 @@ async def send_email(meeting_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/meetings/{meeting_id}/send/slack", tags=["meetings"])
-async def send_slack(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def send_slack(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Post meeting summary and action items to the configured Slack channel."""
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     action_items_rows = (
         await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
@@ -454,11 +500,16 @@ async def send_slack(meeting_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/meetings/{meeting_id}/send/jira", tags=["meetings"])
-async def send_jira(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def send_jira(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Create Jira tickets for all action items in this meeting."""
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     action_items_rows = (
         await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
@@ -499,11 +550,13 @@ async def send_calendar(
     meeting_id: str,
     days_from_now: int = Query(7, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Book a follow-up Google Calendar event for all participants."""
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     participants = (
         await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
@@ -546,6 +599,7 @@ async def dispatch_meeting(
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     results: dict[str, Any] = {}
     requested_channels = set(payload.channels or [])
@@ -703,11 +757,16 @@ async def dispatch_meeting(
 
 
 @router.get("/meetings/{meeting_id}/audio", tags=["meetings"])
-async def stream_meeting_audio(meeting_id: str, db: AsyncSession = Depends(get_db)):
+async def stream_meeting_audio(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Stream the audio file associated with a meeting for playback in the frontend audio player."""
     meeting = await db.get(Meeting, meeting_id)
     if not meeting:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     possible_paths = [
         os.path.join(settings.upload_dir, meeting.audio_filename),
@@ -784,6 +843,8 @@ async def _build_full_meeting_context(
 
     if meeting_id:
         target_meeting = await db.get(Meeting, meeting_id)
+        if target_meeting and current_user and target_meeting.user_id and target_meeting.user_id != current_user.id:
+            target_meeting = None
     else:
         stmt = select(Meeting).where(user_filter).order_by(Meeting.created_at.desc()).limit(1)
         target_meeting = (await db.execute(stmt)).scalars().first()
@@ -858,7 +919,13 @@ async def _build_full_meeting_context(
     # Cross-Meeting RAG Search for workspace-wide contextual intelligence
     try:
         from core.memory_service import memory_service
-        mem_matches = await memory_service.search_memory(db, question, top_k=2, exclude_meeting_id=target_meeting.id)
+        mem_matches = await memory_service.search_memory(
+            db,
+            question,
+            top_k=2,
+            exclude_meeting_id=target_meeting.id,
+            user_id=current_user.id if current_user else None,
+        )
         if mem_matches:
             mem_block = ["HISTORICAL CROSS-MEETING INTELLIGENCE:"]
             for m_match in mem_matches:
@@ -1057,7 +1124,7 @@ async def search_memory(
     Returns relevant past meetings, action items, and decisions matching the query vector.
     """
     from core.memory_service import memory_service
-    matches = await memory_service.search_memory(db, payload.query, top_k=payload.top_k)
+    matches = await memory_service.search_memory(db, payload.query, top_k=payload.top_k, user_id=current_user.id)
     return MemorySearchResponse(
         query=payload.query,
         results_count=len(matches),
@@ -1501,6 +1568,7 @@ async def update_speaker_mapping(
     meeting = (await db.execute(stmt)).scalar_one_or_none()
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
 
     # Update or add Participant speaker_label records
     stmt_parts = select(Participant).where(Participant.meeting_id == meeting_id)

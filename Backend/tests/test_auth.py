@@ -33,20 +33,20 @@ async def test_register_user_duplicate_email(async_client, seeded_user):
 @pytest.mark.asyncio
 async def test_login_user_success(async_client, seeded_user):
     payload = {
-        "email": "testuser@example.com",
+        "email": seeded_user.email,
         "password": "Password123!",
     }
     resp = await async_client.post("/auth/login", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
-    assert data["user"]["email"] == "testuser@example.com"
+    assert data["user"]["email"] == seeded_user.email
 
 
 @pytest.mark.asyncio
 async def test_login_user_invalid_password(async_client, seeded_user):
     payload = {
-        "email": "testuser@example.com",
+        "email": seeded_user.email,
         "password": "WrongPassword!",
     }
     resp = await async_client.post("/auth/login", json=payload)

@@ -59,6 +59,15 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   if (!response.ok) {
     const payload = await parseErrorPayload(response);
     const message = payload?.detail || payload?.message || `Request failed (${response.status})`;
+
+    if (response.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/")) {
+      localStorage.removeItem("mia_token");
+      localStorage.removeItem("mia_user");
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/register") {
+        window.location.href = "/login";
+      }
+    }
+
     throw new ApiError(message, response.status, payload);
   }
 

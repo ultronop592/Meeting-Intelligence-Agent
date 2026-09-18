@@ -19,6 +19,8 @@
 | Backend | Direct memory search endpoint (`/memory/search`) | ✅ Complete |
 | Backend | Jira, Slack, Google Calendar, SendGrid integrations | ✅ Complete |
 | Backend | Background job tracking with Postgres persistence | ✅ Complete |
+| Backend & Frontend | JWT User Authentication, Session State & Role Isolation | ✅ Complete |
+| Backend | SlowAPI endpoint rate limiting (auth & uploads) | ✅ Complete |
 | Frontend | Meeting upload + live job progress tracker | ✅ Complete |
 | Frontend | Audio player with transcript sync + timestamp-click | ✅ Complete |
 | Frontend | Streaming agent chat with blinking cursor (▍) | ✅ Complete |
@@ -28,8 +30,6 @@
 
 | Area | Gap |
 |------|-----|
-| Security | **No authentication or authorization** — all endpoints are publicly accessible |
-| Security | No rate limiting on any endpoint |
 | UX | No real-time pipeline progress — frontend polls with fixed intervals |
 | UX | Agent chat has no conversation history / multi-turn context |
 | UX | Memory layer has no frontend UI or search page |
@@ -37,7 +37,7 @@
 | Search | No meeting-wide search beyond the memory endpoint |
 | Speaker Labels | Diarization gives `SPEAKER_00` names, not real names — no speaker identity linking |
 | Observability | Logs are structured but not aggregated — no alerting or error tracking |
-| Testing | No frontend Vitest tests — test suite is backend-only |
+| Testing | Component coverage needed beyond API client tests |
 | Production | No Docker / Docker Compose config for self-hosted deployment |
 | Production | No environment separation (dev vs staging vs prod) config |
 
@@ -47,19 +47,19 @@
 
 ---
 
-### 🔐 Phase 1 — Authentication & Security (High Priority)
+### 🔐 Phase 1 — Authentication & Security (Completed ✅)
 
-**Why**: All endpoints are currently open. Any API key in `.env` can be abused by anyone with network access.
+**Why**: All endpoints are protected with JWT authentication, per-user data isolation, and rate limiting.
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 1.1 | Add JWT-based user authentication with `python-jose` + `passlib` | `core/auth.py` *(NEW)*, `db/models.py`, `api/routes.py` |
-| 1.2 | Add `User` table to DB (`id`, `email`, `hashed_password`, `created_at`) | `db/models.py`, `db/database.py` |
-| 1.3 | `POST /auth/register` and `POST /auth/login` endpoints | `api/auth_routes.py` *(NEW)* |
-| 1.4 | Protect all meeting endpoints with `Depends(get_current_user)` | `api/routes.py` |
-| 1.5 | Associate each meeting with the uploading user (`meeting.user_id`) | `db/models.py`, `db/database.py` |
-| 1.6 | Add `slowapi` rate limiter (e.g., 60 requests/min/IP on upload) | `api/main.py` |
-| 1.7 | Frontend login/register page + JWT token management via `localStorage` | `frontend/app/(auth)/` *(NEW)* |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 1.1 | Add JWT-based user authentication with `PyJWT` + `passlib` | `core/auth.py`, `db/models.py`, `api/routes.py` | ✅ Complete |
+| 1.2 | Add `User` table to DB (`id`, `email`, `hashed_password`, `created_at`) | `db/models.py`, `db/database.py` | ✅ Complete |
+| 1.3 | `POST /auth/register` and `POST /auth/login` endpoints | `api/auth_routes.py` | ✅ Complete |
+| 1.4 | Protect all meeting endpoints with `Depends(get_current_user)` | `api/routes.py` | ✅ Complete |
+| 1.5 | Associate each meeting with the uploading user & verify tenant ownership | `db/models.py`, `db/database.py`, `api/routes.py` | ✅ Complete |
+| 1.6 | Add `slowapi` rate limiter on auth (10/min) and uploads (30/min) | `api/main.py`, `core/limiter.py`, `api/routes.py` | ✅ Complete |
+| 1.7 | Frontend login/register page + JWT token management + 401 redirect | `frontend/app/(auth)/`, `frontend/lib/api/client.ts` | ✅ Complete |
 
 ```
 Backend: python-jose, passlib, slowapi

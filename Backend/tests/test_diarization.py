@@ -32,8 +32,9 @@ from models.schemas import AgentState
 # =============================================================================
 
 def test_diarization_available_when_pyannote_and_token_present():
+    mock_pya = MagicMock()
     with (
-        patch.dict("sys.modules", {"pyannote.audio": MagicMock()}),
+        patch.dict("sys.modules", {"pyannote": mock_pya, "pyannote.audio": mock_pya}),
         patch("tools.diarization_tool.settings") as mock_settings,
     ):
         mock_settings.hf_token = "hf_test123"

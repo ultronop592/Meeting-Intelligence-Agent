@@ -8,21 +8,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from api.auth_routes import auth_router
 from api.routes import router
 from core.config import settings
+from core.limiter import limiter
 from core.logging import setup_logging
 from db.database import init_db, recover_stale_jobs
 from models.schemas import HealthResponse
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 
 @asynccontextmanager

@@ -331,6 +331,7 @@ async def get_processing_job(job_id: str) -> dict | None:
                 return None
             return {
                 "status":              job.status,
+                "user_id":             job.user_id,
                 "completed_nodes":     job.completed_nodes or [],
                 "errors":              job.errors or [],
                 "meeting_id":          job.meeting_id,

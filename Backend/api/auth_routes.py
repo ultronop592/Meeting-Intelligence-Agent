@@ -1,10 +1,11 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import create_access_token, get_current_user, hash_password, verify_password
+from core.limiter import limiter
 from db.database import get_db
 from db.models import User
 from models.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
@@ -14,7 +15,8 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @auth_router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(payload: UserRegister, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register_user(request: Request, payload: UserRegister, db: AsyncSession = Depends(get_db)):
     """Register a new user account."""
     existing_user = (
         await db.execute(select(User).where(User.email == payload.email))
@@ -44,7 +46,8 @@ async def register_user(payload: UserRegister, db: AsyncSession = Depends(get_db
 
 
 @auth_router.post("/login", response_model=TokenResponse)
-async def login_user(payload: UserLogin, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login_user(request: Request, payload: UserLogin, db: AsyncSession = Depends(get_db)):
     """Authenticate with JSON payload (email & password)."""
     user = (
         await db.execute(select(User).where(User.email == payload.email.strip().lower()))

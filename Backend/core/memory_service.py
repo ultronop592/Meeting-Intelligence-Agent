@@ -149,6 +149,7 @@ class MemoryService:
         query: str,
         top_k: int = 3,
         exclude_meeting_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Searches past meetings semantically using vector similarity.
 
@@ -161,6 +162,8 @@ class MemoryService:
 
         # Fetch candidate meetings from DB
         stmt = select(Meeting)
+        if user_id:
+            stmt = stmt.where((Meeting.user_id == user_id) | (Meeting.user_id.is_(None)))
         if exclude_meeting_id:
             stmt = stmt.where(Meeting.id != exclude_meeting_id)
 

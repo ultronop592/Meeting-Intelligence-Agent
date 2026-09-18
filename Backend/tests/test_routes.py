@@ -39,6 +39,14 @@ async def test_unauthorized_access(async_client):
     routes = [
         ("GET", "/meetings"),
         ("GET", "/meetings/some-id"),
+        ("DELETE", "/meetings/some-id"),
+        ("GET", "/meetings/some-id/audio"),
+        ("PATCH", "/meetings/some-id/action-items/some-item"),
+        ("PATCH", "/meetings/some-id/participants/some-part"),
+        ("POST", "/meetings/some-id/send/email"),
+        ("POST", "/meetings/some-id/send/slack"),
+        ("POST", "/meetings/some-id/send/jira"),
+        ("POST", "/meetings/some-id/send/calendar"),
         ("POST", "/query"),
         ("POST", "/query/stream"),
         ("POST", "/memory/search"),
@@ -46,9 +54,49 @@ async def test_unauthorized_access(async_client):
     for method, path in routes:
         if method == "GET":
             resp = await async_client.get(path)
+        elif method == "DELETE":
+            resp = await async_client.delete(path)
+        elif method == "PATCH":
+            resp = await async_client.patch(path, json={"status": "done"})
         else:
             resp = await async_client.post(path, json={"question": "test"})
         assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_meeting_ownership_isolation(async_client, db_session, seeded_meeting, seeded_action_item):
+    """User B should not be able to access or modify User A's meeting."""
+    import uuid
+    from db.models import User
+    from core.auth import hash_password, create_access_token
+
+    user_b = User(
+        id=f"user-b-{uuid.uuid4().hex[:8]}",
+        email=f"userb_{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password=hash_password("Password123!"),
+        full_name="User B",
+    )
+    db_session.add(user_b)
+    await db_session.commit()
+
+    token_b = create_access_token({"sub": user_b.id, "email": user_b.email})
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # 1. User B tries to view User A's meeting details -> 403
+    resp = await async_client.get(f"/meetings/{seeded_meeting.id}", headers=headers_b)
+    assert resp.status_code == 403
+
+    # 2. User B tries to delete User A's meeting -> 403
+    resp = await async_client.delete(f"/meetings/{seeded_meeting.id}", headers=headers_b)
+    assert resp.status_code == 403
+
+    # 3. User B tries to update User A's action item -> 403
+    resp = await async_client.patch(
+        f"/meetings/{seeded_meeting.id}/action-items/{seeded_action_item.id}",
+        json={"status": "done"},
+        headers=headers_b,
+    )
+    assert resp.status_code == 403
 
 
 # =============================================================================

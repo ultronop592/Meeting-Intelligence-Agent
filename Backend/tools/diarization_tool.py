@@ -47,6 +47,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,6 @@ def is_diarization_available() -> bool:
     """Return True if pyannote.audio is installed AND HF_TOKEN is configured."""
     try:
         import pyannote.audio  # noqa: F401  — just checking the import
-        from core.config import settings
         return bool(settings.hf_token) and settings.diarization_enabled
     except ImportError:
         return False
@@ -84,7 +85,6 @@ def run_speaker_diarization(
     """
     try:
         from pyannote.audio import Pipeline
-        from core.config import settings
 
         if not settings.hf_token:
             logger.info("Diarization skipped — HF_TOKEN not configured.")
