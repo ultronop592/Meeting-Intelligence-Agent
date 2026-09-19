@@ -80,34 +80,34 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
           </Button>
           <form
             onSubmit={submitSearch}
-            className="hidden items-center gap-2 rounded-[12px] border border-border bg-surface-2 px-3 py-2 text-sm text-text-tertiary md:flex"
+            className="hidden items-center gap-2 rounded-xl border border-border/80 bg-surface-2/70 px-3 py-1.5 text-xs text-text-tertiary md:flex focus-within:border-accent/60 focus-within:ring-1 focus-within:ring-accent/30 transition-all"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-3.5 w-3.5 text-text-tertiary" />
             <input
               value={searchValue}
               onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Global search (meetings, decisions, actions...)"
-              className="w-72 bg-transparent text-sm text-foreground outline-none placeholder:text-text-tertiary"
+              placeholder="Search meetings, memory, decisions..."
+              className="w-72 bg-transparent text-xs text-foreground outline-none placeholder:text-text-tertiary"
             />
           </form>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/meetings"
-            className="inline-flex h-9 items-center rounded-xl border border-border bg-surface px-3 text-xs font-medium text-foreground hover:bg-surface-2 transition-colors"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-xs font-semibold text-foreground hover:bg-surface-2 transition-all shadow-2xs"
             aria-label="Upload a new meeting"
           >
-            <UploadCloud className="mr-2 h-4 w-4" /> Upload
+            <UploadCloud className="h-3.5 w-3.5 text-accent" /> Upload
           </Link>
           <ThemeToggle />
-          <Button variant="ghost" size="sm" aria-label="Notifications" className="h-9 w-9 rounded-xl p-0">
+          <Button variant="ghost" size="sm" aria-label="Notifications" className="h-9 w-9 rounded-xl p-0 text-text-secondary hover:text-foreground">
             <Bell className="h-4 w-4" />
           </Button>
 
           {/* User Profile & Logout */}
           {user && (
-            <div className="flex items-center gap-2 border-l border-border pl-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent border border-accent/30">
+            <div className="flex items-center gap-2 border-l border-border pl-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-xs font-bold text-accent border border-accent/25">
                 {userInitial}
               </div>
               <span className="hidden text-xs font-medium text-text-secondary lg:inline-block max-w-[140px] truncate">
@@ -119,9 +119,9 @@ export function Navbar({ collapsed, compactMode, onToggleCollapse, onToggleCompa
                 onClick={logout}
                 title="Sign Out"
                 aria-label="Sign Out"
-                className="h-8 w-8 p-0 text-text-tertiary hover:text-red-400"
+                className="h-8 w-8 p-0 text-text-tertiary hover:text-danger"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5" />
               </Button>
             </div>
           )}

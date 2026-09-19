@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: var(--theme-background, #f7f5ef);
-  --color-foreground: var(--theme-foreground, #1c1c1c);
-  --color-accent: #ff9f43;
-  --color-accent-strong: #f08b2f;
-  --color-border: var(--theme-border, #e5e5e5);
+  --color-background: var(--theme-background, #fcfcfb);
+  --color-foreground: var(--theme-foreground, #111827);
+  --color-accent: #f97316;
+  --color-accent-strong: #ea580c;
+  --color-border: var(--theme-border, #e6e8eb);
   --color-surface: var(--theme-surface, #ffffff);
-  --color-surface-2: var(--theme-surface-2, #f1efe7);
-  --color-surface-3: var(--theme-surface-3, #ebe7dc);
-  --color-text-secondary: var(--theme-text-secondary, #4f4f4f);
-  --color-text-tertiary: var(--theme-text-tertiary, #7a7a7a);
-  --color-danger: var(--theme-danger, #c2410c);
+  --color-surface-2: var(--theme-surface-2, #f4f5f7);
+  --color-surface-3: var(--theme-surface-3, #eaecef);
+  --color-text-secondary: var(--theme-text-secondary, #4b5565);
+  --color-text-tertiary: var(--theme-text-tertiary, #8892a4);
+  --color-danger: var(--theme-danger, #ef4444);
 
   --text-display-lg: 2rem;
   --text-title-lg: 1.5rem;
@@ -32,26 +32,26 @@ html:not(.dark),
   --app-shell-x: 1rem;
   --app-shell-y: 1.5rem;
 
-  /* Light warm editorial theme */
-  --theme-background: #f7f5ef;
-  --theme-foreground: #1c1c1c;
-  --theme-border: #e5e5e5;
+  /* Modern Clean Light Theme */
+  --theme-background: #fcfcfb;
+  --theme-foreground: #111827;
+  --theme-border: #e6e8eb;
   --theme-surface: #ffffff;
-  --theme-surface-2: #f1efe7;
-  --theme-surface-3: #ebe7dc;
-  --theme-text-secondary: #4f4f4f;
-  --theme-text-tertiary: #7a7a7a;
-  --theme-danger: #c2410c;
+  --theme-surface-2: #f4f5f7;
+  --theme-surface-3: #eaecef;
+  --theme-text-secondary: #4b5565;
+  --theme-text-tertiary: #8892a4;
+  --theme-danger: #ef4444;
 
-  --color-background: #f7f5ef;
-  --color-foreground: #1c1c1c;
-  --color-border: #e5e5e5;
+  --color-background: #fcfcfb;
+  --color-foreground: #111827;
+  --color-border: #e6e8eb;
   --color-surface: #ffffff;
-  --color-surface-2: #f1efe7;
-  --color-surface-3: #ebe7dc;
-  --color-text-secondary: #4f4f4f;
-  --color-text-tertiary: #7a7a7a;
-  --color-danger: #c2410c;
+  --color-surface-2: #f4f5f7;
+  --color-surface-3: #eaecef;
+  --color-text-secondary: #4b5565;
+  --color-text-tertiary: #8892a4;
+  --color-danger: #ef4444;
 }
 
 .dark,
@@ -59,25 +59,25 @@ html.dark,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Charcoal Black Theme */
-  --theme-background: #121316;
-  --theme-foreground: #f4f4f6;
-  --theme-border: #282a33;
-  --theme-surface: #18191f;
-  --theme-surface-2: #22242c;
-  --theme-surface-3: #2c2f3a;
-  --theme-text-secondary: #a1a5b3;
-  --theme-text-tertiary: #6d7280;
+  /* Sleek Minimalist Charcoal Dark Theme */
+  --theme-background: #0d0f12;
+  --theme-foreground: #f4f5f7;
+  --theme-border: #22252e;
+  --theme-surface: #14171d;
+  --theme-surface-2: #1a1e26;
+  --theme-surface-3: #222733;
+  --theme-text-secondary: #9aa1b2;
+  --theme-text-tertiary: #5e6577;
   --theme-danger: #f87171;
 
-  --color-background: #121316;
-  --color-foreground: #f4f4f6;
-  --color-border: #282a33;
-  --color-surface: #18191f;
-  --color-surface-2: #22242c;
-  --color-surface-3: #2c2f3a;
-  --color-text-secondary: #a1a5b3;
-  --color-text-tertiary: #6d7280;
+  --color-background: #0d0f12;
+  --color-foreground: #f4f5f7;
+  --color-border: #22252e;
+  --color-surface: #14171d;
+  --color-surface-2: #1a1e26;
+  --color-surface-3: #222733;
+  --color-text-secondary: #9aa1b2;
+  --color-text-tertiary: #5e6577;
   --color-danger: #f87171;
 }
 
@@ -90,27 +90,32 @@ html.dark,
   scrollbar-color: color-mix(in oklab, var(--color-border) 80%, transparent) transparent;
 }
 
-body,
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  min-height: 100vh;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
 html:not(.dark) body,
 [data-theme="light"] body {
-  background-color: #f7f5ef !important;
-  color: #1c1c1c !important;
+  background-color: #fcfcfb;
+  color: #111827;
   background-image:
-    radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.16), transparent 28%),
-    radial-gradient(circle at 100% 10%, rgba(28, 28, 28, 0.08), transparent 22%),
-    linear-gradient(180deg, #f8f6f0 0%, #f3efe5 100%) !important;
-  min-height: 100vh;
+    radial-gradient(circle at 0% 0%, rgba(249, 115, 22, 0.08), transparent 30%),
+    radial-gradient(circle at 100% 10%, rgba(17, 24, 39, 0.04), transparent 25%),
+    linear-gradient(180deg, #fcfcfb 0%, #f7f8f9 100%);
 }
 
 .dark body,
 html.dark body,
 [data-theme="dark"] body {
-  background-color: #121316 !important;
-  color: #f4f4f6 !important;
+  background-color: #0d0f12;
+  color: #f4f5f7;
   background-image:
-    radial-gradient(circle at 0% 0%, rgba(255, 159, 67, 0.08), transparent 32%),
-    radial-gradient(circle at 100% 10%, rgba(255, 255, 255, 0.02), transparent 22%),
-    linear-gradient(180deg, #131417 0%, #0d0e11 100%) !important;
+    radial-gradient(circle at 0% 0%, rgba(249, 115, 22, 0.07), transparent 30%),
+    radial-gradient(circle at 100% 10%, rgba(255, 255, 255, 0.015), transparent 20%),
+    linear-gradient(180deg, #0e1014 0%, #0a0b0e 100%);
 }
 
 .dark input,
@@ -120,21 +125,22 @@ html.dark body,
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
 }
 
 @layer base {
   body {
-    font-family: var(--font-sans), "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     @apply min-h-screen antialiased;
   }
 
   h1,
   h2,
-  h3 {
-    font-family: var(--font-serif), Georgia, Cambria, "Times New Roman", serif;
-    letter-spacing: -0.02em;
-    font-weight: 520;
+  h3,
+  h4 {
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.025em;
+    font-weight: 600;
   }
 }
 
