@@ -305,6 +305,44 @@ export const meetingApi = {
       body: JSON.stringify(mappings),
     }),
 
+  downloadMeetingPdf: async (meetingId: string, title?: string): Promise<void> => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/meetings/${meetingId}/export/pdf`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to download PDF (${response.status})`;
+      try {
+        const err = await response.json();
+        detail = err.detail || detail;
+      } catch {
+        // ignore
+      }
+      throw new Error(detail);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeTitle = (title || "meeting")
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, "_")
+      .slice(0, 40);
+    a.download = `${safeTitle}_summary.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
+
   getDetailedHealth: () =>
     apiRequest<DetailedHealthResponse>("/health/detailed"),
 };

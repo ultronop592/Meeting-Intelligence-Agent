@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +70,7 @@ from tools.calender_tool import send_calendar_for_meeting
 from tools.email_tool import send_email_for_meeting
 from tools.jira_tool import send_jira_for_meeting
 from tools.slack_tool import send_slack_for_meeting
+from core.pdf_service import generate_meeting_pdf
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -365,6 +366,55 @@ async def get_meeting_details(
         participants=[ParticipantRow.model_validate(participant) for participant in participants],
         notifications=[NotificationLogRow.model_validate(notification) for notification in notifications],
     )
+
+
+@router.get("/meetings/{meeting_id}/export/pdf", tags=["meetings"])
+async def export_meeting_pdf(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a meeting's intelligence summary, action items, and decisions as a formatted PDF."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
+
+    action_items = (
+        await db.execute(
+            select(DBActionItem).where(DBActionItem.meeting_id == meeting_id).order_by(DBActionItem.created_at)
+        )
+    ).scalars().all()
+    decisions = (
+        await db.execute(
+            select(Decision).where(Decision.meeting_id == meeting_id).order_by(Decision.created_at)
+        )
+    ).scalars().all()
+    participants = (
+        await db.execute(
+            select(Participant).where(Participant.meeting_id == meeting_id).order_by(Participant.name)
+        )
+    ).scalars().all()
+
+    pdf_bytes = generate_meeting_pdf(
+        meeting=meeting,
+        action_items=action_items,
+        decisions=decisions,
+        participants=participants,
+    )
+
+    safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in (meeting.title or "meeting")).strip("_")
+    filename = f"{safe_title[:40]}_{meeting.id[:8]}_summary.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+        },
+    )
+
 
 
 @router.patch("/meetings/{meeting_id}/action-items/{item_id}", response_model=ActionItemRow, tags=["meetings"])

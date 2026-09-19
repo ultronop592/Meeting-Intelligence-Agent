@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { AudioPlayer } from "@/components/meeting/audio-player";
+import { Download, Loader2 } from "lucide-react";
 import type { ChatMessage } from "@/types/api";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
@@ -37,6 +38,7 @@ export default function MeetingDetailPage() {
   const [speakerDrafts, setSpeakerDrafts] = useState<Record<string, string>>({});
   const [savingSpeakerMapping, setSavingSpeakerMapping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const detectedSpeakers = useMemo(() => {
     const text = data?.meeting.diarized_transcript || "";
@@ -316,6 +318,19 @@ export default function MeetingDetailPage() {
     }
   };
 
+  const handleExportPdf = async () => {
+    if (!meetingId) return;
+    setIsExportingPdf(true);
+    try {
+      await meetingApi.downloadMeetingPdf(meetingId, data?.meeting.title);
+      toast.success("PDF summary downloaded successfully.");
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[2.15fr_1fr]">
       <div className="space-y-4">
@@ -326,6 +341,20 @@ export default function MeetingDetailPage() {
               <h2 className="mt-2 text-xl font-semibold text-foreground">{title}</h2>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!meetingId || isExportingPdf}
+                onClick={() => void handleExportPdf()}
+                className="gap-1.5"
+              >
+                {isExportingPdf ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {isExportingPdf ? "Generating..." : "Export PDF"}
+              </Button>
               <Button variant="outline" size="sm" onClick={() => refetch()}>
                 Refresh
               </Button>

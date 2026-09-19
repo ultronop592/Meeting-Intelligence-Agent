@@ -49,6 +49,7 @@ aiofiles==24.1.0
 python-dotenv==1.0.1
 tenacity==9.0.0            # Auto-retry for all external API calls
 structlog==24.4.0          # Structured JSON logging
+reportlab==4.2.5           # PDF export for meeting summaries & action items
 
 # --- Dev / Testing -----------------------------------------------------------
 pytest==8.3.4
