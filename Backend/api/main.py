@@ -18,6 +18,7 @@ from core.config import settings
 from core.limiter import limiter
 from core.logging import setup_logging
 from db.database import init_db, recover_stale_jobs
+from core.reminder_service import reminder_scheduler
 from models.schemas import HealthResponse
 
 setup_logging()
@@ -55,7 +56,9 @@ async def lifespan(app: FastAPI):
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     logger.info("Upload directory ensured at: %s", settings.upload_dir)
+    reminder_scheduler.start()
     yield
+    await reminder_scheduler.stop()
     logger.info("Shutting down %s", settings.app_name)
 
 

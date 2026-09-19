@@ -343,6 +343,21 @@ export const meetingApi = {
     window.URL.revokeObjectURL(url);
   },
 
+  triggerMeetingReminders: (meetingId: string, windowDays = 1) =>
+    apiRequest<ReminderTriggerResponse>(`/meetings/${meetingId}/reminders/trigger?window_days=${windowDays}`, {
+      method: "POST",
+    }),
+
+  getMeetingReminderStatus: (meetingId: string, windowDays = 1) =>
+    apiRequest<{ meeting_id: string; items: ReminderItemStatus[] }>(
+      `/meetings/${meetingId}/reminders/status?window_days=${windowDays}`
+    ),
+
+  triggerGlobalReminders: (windowDays = 1) =>
+    apiRequest<ReminderTriggerResponse>(`/reminders/trigger?window_days=${windowDays}`, {
+      method: "POST",
+    }),
+
   getDetailedHealth: () =>
     apiRequest<DetailedHealthResponse>("/health/detailed"),
 };
@@ -386,6 +401,39 @@ export type SpeakerUpdateResponse = {
   meeting_id: string;
   diarized_transcript: string | null;
   participants: ParticipantRow[];
+};
+
+export type ReminderItemStatus = {
+  id: string;
+  description: string;
+  owner: string;
+  due_date: string;
+  priority: string;
+  status: string;
+  is_due: boolean;
+  urgency: "overdue" | "due_today" | "due_soon" | "upcoming";
+  reminded_today: boolean;
+  last_reminded_at: string | null;
+};
+
+export type ReminderTriggerResponse = {
+  success: boolean;
+  meeting_id?: string;
+  summary: {
+    total_checked: number;
+    due_items_found: number;
+    reminders_sent: number;
+    already_reminded: number;
+    skipped_no_contact: number;
+    items: Array<{
+      item_id: string;
+      description: string;
+      owner: string;
+      status: string;
+      urgency: string;
+      channels?: string[];
+    }>;
+  };
 };
 
 export type DetailedHealthResponse = {

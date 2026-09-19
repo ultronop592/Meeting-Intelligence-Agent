@@ -14,10 +14,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { AudioPlayer } from "@/components/meeting/audio-player";
-import { Download, Loader2 } from "lucide-react";
+import { Bell, Download, Loader2 } from "lucide-react";
 import type { ChatMessage } from "@/types/api";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
+
+function isItemOverdue(dueDateStr: string, status: string): boolean {
+  if (status === "done") return false;
+  const match = dueDateStr?.match(/^\d{4}-\d{2}-\d{2}/);
+  if (!match) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return match[0] < today;
+}
+
+function isItemDueToday(dueDateStr: string, status: string): boolean {
+  if (status === "done") return false;
+  const match = dueDateStr?.match(/^\d{4}-\d{2}-\d{2}/);
+  if (!match) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return match[0] === today;
+}
 
 export default function MeetingDetailPage() {
   const params = useParams();
@@ -39,6 +55,11 @@ export default function MeetingDetailPage() {
   const [savingSpeakerMapping, setSavingSpeakerMapping] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isSendingReminders, setIsSendingReminders] = useState(false);
+
+  const overdueCount = useMemo(() => {
+    return (data?.action_items || []).filter((i) => isItemOverdue(i.due_date, i.status)).length;
+  }, [data?.action_items]);
 
   const detectedSpeakers = useMemo(() => {
     const text = data?.meeting.diarized_transcript || "";
@@ -331,6 +352,29 @@ export default function MeetingDetailPage() {
     }
   };
 
+  const handleSendReminders = async () => {
+    if (!meetingId) return;
+    setIsSendingReminders(true);
+    try {
+      const res = await meetingApi.triggerMeetingReminders(meetingId);
+      const { due_items_found, reminders_sent, already_reminded } = res.summary;
+      if (due_items_found === 0) {
+        toast.info("No action items are due or overdue at this time.");
+      } else if (reminders_sent > 0) {
+        toast.success(`Dispatched ${reminders_sent} due-date reminder(s)!${already_reminded > 0 ? ` (${already_reminded} already reminded today)` : ""}`);
+      } else if (already_reminded > 0) {
+        toast.info(`All ${already_reminded} due item(s) have already received reminders today.`);
+      } else {
+        toast.info("Found due items, but no email or Slack contact was available for assignees.");
+      }
+      await invalidateMeetingData();
+    } catch (err) {
+      toast.error(toUserErrorMessage(err));
+    } finally {
+      setIsSendingReminders(false);
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[2.15fr_1fr]">
       <div className="space-y-4">
@@ -394,9 +438,31 @@ export default function MeetingDetailPage() {
             </div>
 
             <div className="rounded-[16px] border border-border bg-surface p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Action items</p>
-                <p className="text-xs text-text-tertiary">PATCH /meetings/:id/action-items/:item_id</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-text-tertiary">Action items</p>
+                  {overdueCount > 0 && (
+                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-500 border border-red-500/20">
+                      {overdueCount} Overdue
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isSendingReminders || !meetingId || filteredActionItems.length === 0}
+                    onClick={() => void handleSendReminders()}
+                    className="gap-1.5 text-xs h-7"
+                  >
+                    {isSendingReminders ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Bell className="h-3 w-3" />
+                    )}
+                    {isSendingReminders ? "Checking..." : "Send Due Reminders"}
+                  </Button>
+                </div>
               </div>
               <div className="mt-4 space-y-3">
                 {filteredActionItems.length === 0 ? (
@@ -404,7 +470,21 @@ export default function MeetingDetailPage() {
                 ) : (
                   filteredActionItems.map((item) => (
                     <div key={item.id} className="rounded-[12px] border border-border bg-surface-2 p-3">
-                      <p className="text-sm font-medium text-foreground">{item.description}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-foreground">{item.description}</p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isItemOverdue(item.due_date, item.status) && (
+                            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-500 border border-red-500/30">
+                              Overdue
+                            </span>
+                          )}
+                          {isItemDueToday(item.due_date, item.status) && (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-500 border border-amber-500/30">
+                              Due Today
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       <p className="mt-1 text-xs text-text-tertiary">
                         Owner: {item.owner} | Due: {item.due_date} | Priority: {item.priority}
                       </p>
