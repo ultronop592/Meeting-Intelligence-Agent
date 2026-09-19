@@ -6,31 +6,23 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import {
   ArrowRight,
-  ArrowUpRight,
   Bell,
   Bot,
-  Calendar,
   CheckCircle2,
   Clock,
   Cpu,
-  Database,
   Download,
   FileText,
-  Layers,
   Mic,
   Moon,
-  Play,
   Search,
-  Send,
-  Shield,
-  Sparkles,
   Sun,
   Terminal,
   Users,
-  Zap,
-  Check,
   AlertTriangle,
   Radio,
+  SlidersHorizontal,
+  ChevronRight,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -42,27 +34,25 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
       {/* =====================================================================
-          1. NAVIGATION HEADER
+          1. NAVIGATION HEADER (EXPANSIVE & CLEAN)
       ====================================================================== */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md">
+        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center justify-between px-6 sm:px-8 lg:px-12">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground text-background">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground text-background shadow-sm transition-transform hover:scale-105">
               <Terminal className="h-5 w-5" />
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold tracking-tight text-foreground">
-                  Meeting Intelligence
-                </span>
-                <span className="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent uppercase">
-                  Agent v2.0
-                </span>
-              </div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-base font-semibold tracking-tight text-foreground">
+                Meeting Intelligence
+              </span>
+              <span className="rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-accent uppercase tracking-wider">
+                Agent v2.0
+              </span>
             </div>
           </div>
 
-          <nav className="hidden items-center gap-6 text-xs font-medium text-text-secondary md:flex">
+          <nav className="hidden items-center gap-8 text-sm font-medium text-text-secondary md:flex">
             <a href="#problem" className="transition-colors hover:text-foreground">
               Problem
             </a>
@@ -80,11 +70,11 @@ export default function HomePage() {
             </a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5">
             <button
               onClick={toggleTheme}
               aria-label="Toggle theme"
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition-colors hover:bg-surface-2 hover:text-foreground"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary transition-all hover:bg-surface-2 hover:text-foreground hover:scale-105"
             >
               {mounted && theme === "dark" ? (
                 <Sun className="h-4 w-4" />
@@ -96,22 +86,22 @@ export default function HomePage() {
             {user ? (
               <Link
                 href="/dashboard"
-                className="flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 font-mono text-xs font-medium text-background transition-opacity hover:opacity-90"
+                className="flex h-9 items-center gap-2 rounded-lg bg-foreground px-4 font-mono text-xs font-semibold text-background shadow-sm transition-all hover:opacity-90 hover:scale-[1.02]"
               >
                 <span>Open Workspace</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Link
                   href="/login"
-                  className="flex h-8 items-center rounded-md border border-border bg-surface px-3 font-mono text-xs font-medium text-foreground transition-colors hover:bg-surface-2"
+                  className="flex h-9 items-center rounded-lg border border-border bg-surface px-4 font-mono text-xs font-semibold text-foreground transition-all hover:bg-surface-2 hover:border-text-secondary"
                 >
                   Sign In
                 </Link>
                 <Link
                   href="/register"
-                  className="flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 font-mono text-xs font-medium text-background transition-opacity hover:opacity-90"
+                  className="flex h-9 items-center gap-2 rounded-lg bg-foreground px-4 font-mono text-xs font-semibold text-background shadow-sm transition-all hover:opacity-90 hover:scale-[1.02]"
                 >
                   <span>Get Started</span>
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -123,36 +113,36 @@ export default function HomePage() {
       </header>
 
       {/* =====================================================================
-          2. HERO SECTION
+          2. HERO SECTION (EXPANSIVE FULL WIDTH)
       ====================================================================== */}
-      <section className="relative overflow-hidden pt-12 pb-20 md:pt-20 md:pb-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="relative overflow-hidden pt-12 pb-20 md:pt-16 md:pb-24">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12">
           <div className="grid items-center gap-12 lg:grid-cols-12">
             {/* Left Column: Headline and CTAs */}
-            <div className="lg:col-span-6 space-y-6">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 font-mono text-[11px] text-text-secondary">
+            <div className="lg:col-span-6 space-y-7">
+              <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-surface px-3.5 py-1.5 font-mono text-xs text-text-secondary shadow-sm">
                 <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>STATE_MACHINE: 7-NODE ORCHESTRATION</span>
+                <span>STATE_MACHINE: 7-STAGE ORCHESTRATION</span>
               </div>
 
-              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl leading-[1.1]">
                 Stop losing decisions in{" "}
-                <span className="bg-gradient-to-r from-accent to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-accent via-amber-500 to-accent bg-clip-text text-transparent">
                   meeting recordings.
                 </span>
               </h1>
 
-              <p className="max-w-xl text-base leading-relaxed text-text-secondary sm:text-lg">
+              <p className="text-base leading-relaxed text-text-secondary sm:text-lg">
                 An autonomous agentic intelligence platform that listens, diarizes speakers,
-                extracts structured deliverables, and automates your entire post-meeting
+                extracts structured commitments, and automates your entire post-meeting
                 workflow with zero manual note-taking.
               </p>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 {user ? (
                   <Link
                     href="/dashboard"
-                    className="flex h-11 items-center gap-2 rounded-lg bg-foreground px-5 font-mono text-sm font-semibold text-background transition-opacity hover:opacity-90"
+                    className="flex h-12 items-center gap-2.5 rounded-xl bg-foreground px-6 font-mono text-sm font-semibold text-background shadow-md transition-all hover:opacity-90 hover:scale-[1.02]"
                   >
                     <span>Launch Dashboard</span>
                     <ArrowRight className="h-4 w-4" />
@@ -161,14 +151,14 @@ export default function HomePage() {
                   <>
                     <Link
                       href="/register"
-                      className="flex h-11 items-center gap-2 rounded-lg bg-foreground px-5 font-mono text-sm font-semibold text-background transition-opacity hover:opacity-90"
+                      className="flex h-12 items-center gap-2.5 rounded-xl bg-foreground px-6 font-mono text-sm font-semibold text-background shadow-md transition-all hover:opacity-90 hover:scale-[1.02]"
                     >
                       <span>Get Started Free</span>
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                     <Link
                       href="/login"
-                      className="flex h-11 items-center rounded-lg border border-border bg-surface px-5 font-mono text-sm font-semibold text-foreground transition-colors hover:bg-surface-2"
+                      className="flex h-12 items-center rounded-xl border border-border bg-surface px-6 font-mono text-sm font-semibold text-foreground transition-all hover:bg-surface-2 hover:border-text-secondary"
                     >
                       Sign In to Workspace
                     </Link>
@@ -176,28 +166,29 @@ export default function HomePage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-4 pt-6 border-t border-border">
-                <div>
-                  <p className="font-mono text-xl font-bold text-foreground sm:text-2xl">100%</p>
+              {/* Metric Highlights */}
+              <div className="grid grid-cols-3 gap-6 pt-6 border-t border-border">
+                <div className="space-y-1">
+                  <p className="font-mono text-2xl font-bold text-foreground">100%</p>
                   <p className="text-xs text-text-tertiary">Verbatim Context</p>
                 </div>
-                <div>
-                  <p className="font-mono text-xl font-bold text-foreground sm:text-2xl">&lt; 30s</p>
+                <div className="space-y-1">
+                  <p className="font-mono text-2xl font-bold text-foreground">&lt; 30s</p>
                   <p className="text-xs text-text-tertiary">Whisper Ingestion</p>
                 </div>
-                <div>
-                  <p className="font-mono text-xl font-bold text-foreground sm:text-2xl">4 Tools</p>
+                <div className="space-y-1">
+                  <p className="font-mono text-2xl font-bold text-foreground">4 Tools</p>
                   <p className="text-xs text-text-tertiary">Jira, Slack, Cal, Email</p>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Claude-Code-Style Simulated Terminal */}
+            {/* Right Column: Sleek Claude Code-Style Interactive Terminal */}
             <div className="lg:col-span-6">
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl">
+              <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-xl transition-all duration-300 hover:border-accent/40">
                 {/* Terminal Header */}
-                <div className="flex items-center justify-between border-b border-border bg-surface-2 px-4 py-2.5">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between border-b border-border bg-surface-2 px-5 py-3">
+                  <div className="flex items-center gap-2.5">
                     <div className="h-3 w-3 rounded-full bg-red-500/80" />
                     <div className="h-3 w-3 rounded-full bg-amber-500/80" />
                     <div className="h-3 w-3 rounded-full bg-emerald-500/80" />
@@ -205,23 +196,25 @@ export default function HomePage() {
                       agent-graph-orchestrator.sh
                     </span>
                   </div>
-                  <span className="font-mono text-[10px] text-accent">LIVE_INFERENCE</span>
+                  <span className="font-mono text-[10px] text-accent tracking-wider font-semibold">
+                    LIVE_INFERENCE
+                  </span>
                 </div>
 
                 {/* Terminal Body */}
-                <div className="space-y-4 p-5 font-mono text-xs">
+                <div className="space-y-4 p-6 font-mono text-xs">
                   <div className="flex items-start justify-between border-b border-border/50 pb-3">
                     <div className="space-y-1">
-                      <p className="text-text-tertiary">$ agent run --file "q4-product-sync.mp4"</p>
-                      <p className="text-foreground">Processing 42m 18s audio payload (73.4 MB)...</p>
+                      <p className="text-text-tertiary">$ agent run --file &quot;q4-product-sync.mp4&quot;</p>
+                      <p className="text-foreground font-medium">Processing 42m 18s audio payload (73.4 MB)...</p>
                     </div>
-                    <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
+                    <span className="rounded bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-500 border border-emerald-500/20">
                       SUCCESS
                     </span>
                   </div>
 
                   {/* Step Selector Buttons */}
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-4 gap-2">
                     {[
                       { id: 1, label: "01_INGEST" },
                       { id: 2, label: "02_DIARIZE" },
@@ -231,10 +224,10 @@ export default function HomePage() {
                       <button
                         key={step.id}
                         onClick={() => setActiveStep(step.id)}
-                        className={`rounded px-2 py-1 text-[10px] font-semibold transition-colors ${
+                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all ${
                           activeStep === step.id
-                            ? "bg-foreground text-background"
-                            : "bg-surface-2 text-text-tertiary hover:text-foreground"
+                            ? "bg-foreground text-background shadow-sm"
+                            : "bg-surface-2 text-text-tertiary hover:text-foreground hover:bg-surface-3"
                         }`}
                       >
                         {step.label}
@@ -243,17 +236,17 @@ export default function HomePage() {
                   </div>
 
                   {/* Step Dynamic Content */}
-                  <div className="rounded-lg border border-border/80 bg-surface-2 p-3 text-[11px] leading-relaxed">
+                  <div className="rounded-xl border border-border/80 bg-surface-2 p-4 text-xs leading-relaxed">
                     {activeStep === 1 && (
-                      <div className="space-y-1.5 text-text-secondary">
-                        <p className="text-accent font-semibold">[NODE 1] Audio Validation & Chunking</p>
+                      <div className="space-y-2 text-text-secondary">
+                        <p className="text-accent font-semibold">[NODE 1] Audio Validation &amp; Chunking</p>
                         <p>• File format: MP4 container with AAC audio stream</p>
                         <p>• Size &gt; 25MB: Segmented into 5 lossless chunks via ffmpeg</p>
                         <p>• Speech transcription: Groq Whisper Llama-3 API in 2.8s</p>
                       </div>
                     )}
                     {activeStep === 2 && (
-                      <div className="space-y-1.5 text-text-secondary">
+                      <div className="space-y-2 text-text-secondary">
                         <p className="text-accent font-semibold">[NODE 2] Acoustic Diarization</p>
                         <p>• SPEAKER_00 [00:02 - 14:10] → Resolved to: Alice Chen (Lead)</p>
                         <p>• SPEAKER_01 [14:12 - 28:40] → Resolved to: Bob Smith (Eng)</p>
@@ -261,15 +254,15 @@ export default function HomePage() {
                       </div>
                     )}
                     {activeStep === 3 && (
-                      <div className="space-y-1.5 text-text-secondary">
-                        <p className="text-accent font-semibold">[NODE 3] Entity Extraction & RAG Vector</p>
+                      <div className="space-y-2 text-text-secondary">
+                        <p className="text-accent font-semibold">[NODE 3] Entity Extraction &amp; RAG Vector</p>
                         <p>• Action items: 4 tasks detected with owners, due dates, and priorities</p>
                         <p>• Decisions: 2 strategic architectural decisions recorded with context</p>
                         <p>• Vector embedding: 768-dim vector indexed in Neon pgvector</p>
                       </div>
                     )}
                     {activeStep === 4 && (
-                      <div className="space-y-1.5 text-text-secondary">
+                      <div className="space-y-2 text-text-secondary">
                         <p className="text-accent font-semibold">[NODE 4] Multi-Tool Synchronization</p>
                         <p>• Jira: Issue SRUM-42 created for Bob Smith</p>
                         <p>• Slack: Formatted Block Kit brief posted to #product-sync</p>
@@ -279,9 +272,9 @@ export default function HomePage() {
                   </div>
 
                   {/* Terminal Footer Indicator */}
-                  <div className="flex items-center justify-between text-[10px] text-text-tertiary">
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <div className="flex items-center justify-between text-[11px] text-text-tertiary pt-1">
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                       State: GraphExecutionComplete
                     </span>
                     <span>Neon pgvector: synchronized</span>
@@ -294,70 +287,70 @@ export default function HomePage() {
       </section>
 
       {/* =====================================================================
-          3. SECTION: THE PROBLEM
+          3. SECTION: THE PROBLEM (EXPANSIVE 3-CARD LAYOUT)
       ====================================================================== */}
-      <section id="problem" className="border-t border-border py-16 sm:py-20 bg-surface/30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
+      <section id="problem" className="border-t border-border py-20 bg-surface/30">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12 space-y-12">
           <div className="space-y-3">
-            <p className="font-mono text-xs uppercase tracking-widest text-accent">
+            <p className="font-mono text-xs uppercase tracking-widest text-accent font-semibold">
               [ THE PROBLEM ]
             </p>
             <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Meetings are black holes where decisions quietly die.
             </h2>
-            <p className="max-w-2xl text-sm text-text-secondary">
+            <p className="max-w-3xl text-sm leading-relaxed text-text-secondary sm:text-base">
               High-value teams spend over 40% of their work week in strategic discussions,
               yet the knowledge generated is immediately lost to poor retention and manual friction.
             </p>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Problem Card 1 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10 text-red-500 border border-red-500/20">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-red-500/40 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 transition-transform group-hover:scale-105">
                 <Clock className="h-5 w-5" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground">The 60-Minute Black Hole</h3>
+              <h3 className="text-lg font-bold text-foreground">The 60-Minute Black Hole</h3>
               <p className="text-sm leading-relaxed text-text-secondary">
                 Recorded audio files sit in cloud drives where no one has the time to re-listen.
-                Crucial debates and context vanish the moment the call ends.
+                Crucial debates, context, and technical justifications vanish the moment the call ends.
               </p>
               <div className="pt-2">
-                <span className="font-mono text-xs text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+                <span className="font-mono text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-md">
                   Status: 92% of recordings never reopened
                 </span>
               </div>
             </div>
 
             {/* Problem Card 2 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 transition-transform group-hover:scale-105">
                 <AlertTriangle className="h-5 w-5" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground">Lost Commitments & Due Dates</h3>
+              <h3 className="text-lg font-bold text-foreground">Lost Commitments &amp; Due Dates</h3>
               <p className="text-sm leading-relaxed text-text-secondary">
                 Action items agreed verbally are forgotten by the next morning. Deadlines slip
                 because no one transcribed the task into Jira or assigned clear ownership.
               </p>
               <div className="pt-2">
-                <span className="font-mono text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
-                  Status: Zero accountability
+                <span className="font-mono text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-md">
+                  Status: Zero task accountability
                 </span>
               </div>
             </div>
 
             {/* Problem Card 3 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 border border-purple-500/20">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 transition-transform group-hover:scale-105">
                 <FileText className="h-5 w-5" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground">Manual Post-Meeting Busywork</h3>
+              <h3 className="text-lg font-bold text-foreground">Manual Post-Meeting Busywork</h3>
               <p className="text-sm leading-relaxed text-text-secondary">
                 Product managers and team leads waste 45 minutes after every session manually writing
-                meeting minutes, filing tickets, and crafting update emails.
+                meeting minutes, formatting Jira issues, and crafting update emails.
               </p>
               <div className="pt-2">
-                <span className="font-mono text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">
+                <span className="font-mono text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 px-3 py-1 rounded-md">
                   Status: 5+ hours lost per week
                 </span>
               </div>
@@ -367,18 +360,18 @@ export default function HomePage() {
       </section>
 
       {/* =====================================================================
-          4. SECTION: OUR SOLUTION
+          4. SECTION: OUR SOLUTION (EXPANSIVE 6-CARD GRID)
       ====================================================================== */}
-      <section id="solution" className="border-t border-border py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
+      <section id="solution" className="border-t border-border py-20">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12 space-y-12">
           <div className="space-y-3">
-            <p className="font-mono text-xs uppercase tracking-widest text-accent">
+            <p className="font-mono text-xs uppercase tracking-widest text-accent font-semibold">
               [ OUR SOLUTION ]
             </p>
             <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               An autonomous agentic workflow that executes for you.
             </h2>
-            <p className="max-w-2xl text-sm text-text-secondary">
+            <p className="max-w-3xl text-sm leading-relaxed text-text-secondary sm:text-base">
               A comprehensive state machine that transforms audio into verifiable deliverables,
               searchable vectors, and workplace integrations.
             </p>
@@ -386,126 +379,138 @@ export default function HomePage() {
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {/* Feature 1 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <Mic className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">Live Browser Voice Recording</h3>
+              <h3 className="text-base font-bold text-foreground">Live Browser Voice Recording</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Record meetings live using the MediaRecorder API with real-time waveform visualization,
-                timer controls, and in-browser playback preview.
+                duration timers, pause/resume controls, and in-browser playback preview.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                Web Audio API • AnalyserNode
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  Web Audio API • AnalyserNode
+                </span>
+              </div>
             </div>
 
             {/* Feature 2 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <Users className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">Speaker Diarization</h3>
+              <h3 className="text-base font-bold text-foreground">Speaker Diarization</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Acoustic voiceprint analysis attributes every spoken turn to distinct speaker
                 labels with interactive mapping to real team member identities.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                PyAnnote • Timestamp Alignment
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  PyAnnote • Timestamp Alignment
+                </span>
+              </div>
             </div>
 
             {/* Feature 3 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">Structured Entity Extraction</h3>
+              <h3 className="text-base font-bold text-foreground">Structured Entity Extraction</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Parses conversation into typed action items with designated owners, ISO due dates,
                 priority rankings, and formal decision logs with context.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                Pydantic Validation • Typed Schemas
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  Pydantic Validation • Typed Schemas
+                </span>
+              </div>
             </div>
 
             {/* Feature 4 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <Download className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">One-Click Vector PDF Export</h3>
+              <h3 className="text-base font-bold text-foreground">One-Click Vector PDF Export</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
-                Generates executive-ready PDF documents with two-pass pagination ("Page X of Y"),
+                Generates executive-ready PDF documents with two-pass pagination (&quot;Page X of Y&quot;),
                 running footers, color-coded deliverables, and decision logs.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                ReportLab • Vector Typography
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  ReportLab • Vector Typography
+                </span>
+              </div>
             </div>
 
             {/* Feature 5 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <Bot className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">Conversational RAG Agent</h3>
+              <h3 className="text-base font-bold text-foreground">Conversational RAG Agent</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Query single meetings or your entire historical repository via real-time SSE streaming
                 grounded in 60,000+ characters of verbatim transcripts.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                pgvector • Multi-Turn Memory
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  pgvector • Multi-Turn Memory
+                </span>
+              </div>
             </div>
 
             {/* Feature 6 */}
-            <div className="group rounded-xl border border-border bg-surface p-6 space-y-3 transition-all hover:border-accent/40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-foreground group-hover:text-accent">
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-foreground transition-all group-hover:text-accent group-hover:scale-105">
                 <Bell className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-semibold text-foreground">Due-Date Reminders & Dispatch</h3>
+              <h3 className="text-base font-bold text-foreground">Due-Date Reminders &amp; Dispatch</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Background cron checks deadlines hourly and dispatches automated reminder emails
                 and Slack alerts, with one-click dispatch to Jira and Calendar.
               </p>
-              <span className="font-mono text-[10px] text-text-tertiary">
-                SendGrid • Slack Block Kit • Jira API
-              </span>
+              <div className="pt-1">
+                <span className="font-mono text-[11px] text-text-tertiary">
+                  SendGrid • Slack Block Kit • Jira API
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* =====================================================================
-          5. SECTION: WHY THIS IS DIFFERENT
+          5. SECTION: WHY THIS IS DIFFERENT (EXPANSIVE BENTO GRID)
       ====================================================================== */}
-      <section id="why-different" className="border-t border-border py-16 sm:py-20 bg-surface/30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
+      <section id="why-different" className="border-t border-border py-20 bg-surface/30">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12 space-y-12">
           <div className="space-y-3">
-            <p className="font-mono text-xs uppercase tracking-widest text-accent">
+            <p className="font-mono text-xs uppercase tracking-widest text-accent font-semibold">
               [ WHY IT&apos;S DIFFERENT ]
             </p>
             <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Engineered like developer tooling, not a toy note-taker.
             </h2>
-            <p className="max-w-2xl text-sm text-text-secondary">
+            <p className="max-w-3xl text-sm leading-relaxed text-text-secondary sm:text-base">
               Most AI meeting tools are simple wrappers around basic speech APIs that truncate context.
               We built an observable, resilient multi-agent architecture.
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-8 md:grid-cols-2">
             {/* Difference 1 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <div className="group rounded-2xl border border-border bg-surface p-8 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-semibold text-accent">[ ARCHITECTURE ]</span>
-                <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-500">
+                <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-emerald-500 border border-emerald-500/20">
                   LANGGRAPH v0.2
                 </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Stateful Agent Graph vs Single Prompt Chains
               </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
@@ -513,20 +518,20 @@ export default function HomePage() {
                 executes as a directed acyclic graph where each node specializes in validation,
                 transcription, extraction, synthesis, or vectorization with automatic retry policies.
               </p>
-              <div className="rounded-lg bg-surface-2 p-3 font-mono text-xs text-text-secondary">
+              <div className="rounded-xl bg-surface-2 p-4 font-mono text-xs text-text-secondary border border-border/60">
                 Validation → Segmentation → Diarization → Whisper → Extraction → Vectorization
               </div>
             </div>
 
             {/* Difference 2 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <div className="group rounded-2xl border border-border bg-surface p-8 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-semibold text-accent">[ INGESTION ]</span>
-                <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-500">
+                <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-emerald-500 border border-emerald-500/20">
                   NO SIZE LIMITS
                 </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Adaptive Audio Chunking vs File Rejections
               </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
@@ -534,20 +539,20 @@ export default function HomePage() {
                 automatically detects large recordings and segments them into lossless 10-minute
                 chunks via stream-copy muxing, merging transcripts seamlessly without quality degradation.
               </p>
-              <div className="rounded-lg bg-surface-2 p-3 font-mono text-xs text-text-secondary">
+              <div className="rounded-xl bg-surface-2 p-4 font-mono text-xs text-text-secondary border border-border/60">
                 Stream-copy muxing • Zero re-encoding latency • Handles 2hr+ recordings
               </div>
             </div>
 
             {/* Difference 3 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <div className="group rounded-2xl border border-border bg-surface p-8 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-semibold text-accent">[ GOVERNANCE ]</span>
-                <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-500">
+                <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-emerald-500 border border-emerald-500/20">
                   HUMAN-IN-THE-LOOP
                 </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Granular Review Before External Dispatch
               </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
@@ -555,20 +560,20 @@ export default function HomePage() {
                 Meeting Intelligence Agent enforces a governance gate where organizers can review,
                 edit owners, adjust deadlines, and selectively approve channel dispatches.
               </p>
-              <div className="rounded-lg bg-surface-2 p-3 font-mono text-xs text-text-secondary">
+              <div className="rounded-xl bg-surface-2 p-4 font-mono text-xs text-text-secondary border border-border/60">
                 Editable owners • Due date adjustment • Selective channel triggers
               </div>
             </div>
 
             {/* Difference 4 */}
-            <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+            <div className="group rounded-2xl border border-border bg-surface p-8 space-y-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-semibold text-accent">[ INTEGRATION ]</span>
-                <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-500">
+                <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-emerald-500 border border-emerald-500/20">
                   PER-USER CREDS
                 </span>
               </div>
-              <h3 className="text-lg font-semibold text-foreground">
+              <h3 className="text-xl font-bold text-foreground">
                 Personalized Tool Credentials vs Shared Env Defaults
               </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
@@ -576,7 +581,7 @@ export default function HomePage() {
                 Calendar credentials directly in the UI. Action items and tickets are created
                 under your personal account rather than an impersonal shared bot identity.
               </p>
-              <div className="rounded-lg bg-surface-2 p-3 font-mono text-xs text-text-secondary">
+              <div className="rounded-xl bg-surface-2 p-4 font-mono text-xs text-text-secondary border border-border/60">
                 User-level encryption • Live connection tests • System fallback
               </div>
             </div>
@@ -587,27 +592,27 @@ export default function HomePage() {
       {/* =====================================================================
           6. SECTION: WHAT IT'S MOSTLY USED FOR (CORE USE CASES)
       ====================================================================== */}
-      <section id="use-cases" className="border-t border-border py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-12">
+      <section id="use-cases" className="border-t border-border py-20">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12 space-y-12">
           <div className="space-y-3">
-            <p className="font-mono text-xs uppercase tracking-widest text-accent">
+            <p className="font-mono text-xs uppercase tracking-widest text-accent font-semibold">
               [ CORE USE CASES ]
             </p>
             <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Where teams deploy Meeting Intelligence Agent.
             </h2>
-            <p className="max-w-2xl text-sm text-text-secondary">
+            <p className="max-w-3xl text-sm leading-relaxed text-text-secondary sm:text-base">
               Designed for software engineering teams, leadership syncs, and client-facing operations.
             </p>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {/* Use Case 1 */}
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-500/10 text-blue-500">
-                <Cpu className="h-4 w-4" />
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-blue-500/40 hover:shadow-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 transition-transform group-hover:scale-105">
+                <Cpu className="h-5 w-5" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Sprint Planning & Standups</h3>
+              <h3 className="text-base font-bold text-foreground">Sprint Planning &amp; Standups</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Turn 45-minute sprint planning meetings into instantly formatted Jira issues,
                 dispatched straight into your backlog with assigned owners.
@@ -615,11 +620,11 @@ export default function HomePage() {
             </div>
 
             {/* Use Case 2 */}
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-purple-500/10 text-purple-500">
-                <FileText className="h-4 w-4" />
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 transition-transform group-hover:scale-105">
+                <FileText className="h-5 w-5" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Executive & Board Syncs</h3>
+              <h3 className="text-base font-bold text-foreground">Executive &amp; Board Syncs</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Generate polished vector PDF summaries with formal key decisions logs and high-level
                 takeaways for stakeholders and board members.
@@ -627,11 +632,11 @@ export default function HomePage() {
             </div>
 
             {/* Use Case 3 */}
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-amber-500/10 text-amber-500">
-                <Bell className="h-4 w-4" />
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 transition-transform group-hover:scale-105">
+                <Bell className="h-5 w-5" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Client Discovery & Sales</h3>
+              <h3 className="text-base font-bold text-foreground">Client Discovery &amp; Sales</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
                 Track client requirements and commitments with automated due-date reminder emails
                 so no deliverable is missed before the next call.
@@ -639,13 +644,13 @@ export default function HomePage() {
             </div>
 
             {/* Use Case 4 */}
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-emerald-500/10 text-emerald-500">
-                <Search className="h-4 w-4" />
+            <div className="group rounded-2xl border border-border bg-surface p-7 space-y-4 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500 transition-transform group-hover:scale-105">
+                <Search className="h-5 w-5" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Cross-Meeting Knowledge Discovery</h3>
+              <h3 className="text-base font-bold text-foreground">Cross-Meeting Knowledge Discovery</h3>
               <p className="text-xs leading-relaxed text-text-secondary">
-                Ask questions like "What did we decide about database auth three weeks ago?" and
+                Ask questions like &quot;What did we decide about database auth three weeks ago?&quot; and
                 receive exact cited answers grounded in full transcripts.
               </p>
             </div>
@@ -654,22 +659,22 @@ export default function HomePage() {
       </section>
 
       {/* =====================================================================
-          7. SECTION: INTERACTIVE FEATURE PREVIEWS
+          7. SECTION: INTERACTIVE FEATURE SHOWCASE (FULL WIDTH & CLEAN)
       ====================================================================== */}
-      <section id="interactive-preview" className="border-t border-border py-16 sm:py-20 bg-surface/30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-accent">
+      <section id="interactive-preview" className="border-t border-border py-20 bg-surface/30">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12 space-y-10">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="space-y-2">
+              <p className="font-mono text-xs uppercase tracking-widest text-accent font-semibold">
                 [ INTERACTIVE SHOWCASE ]
               </p>
-              <h2 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
                 Experience the core capabilities.
               </h2>
             </div>
 
             {/* Tab selector */}
-            <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
+            <div className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-surface p-1.5 shadow-sm">
               {[
                 { id: "recorder", label: "Voice Recorder", icon: Mic },
                 { id: "pdf", label: "PDF Export", icon: Download },
@@ -681,13 +686,13 @@ export default function HomePage() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-mono text-xs font-medium transition-colors ${
+                    className={`flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xs font-semibold transition-all ${
                       activeTab === tab.id
-                        ? "bg-foreground text-background"
-                        : "text-text-secondary hover:text-foreground"
+                        ? "bg-foreground text-background shadow-sm scale-[1.02]"
+                        : "text-text-secondary hover:text-foreground hover:bg-surface-2"
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-4 w-4" />
                     <span>{tab.label}</span>
                   </button>
                 );
@@ -696,38 +701,38 @@ export default function HomePage() {
           </div>
 
           {/* Tab Showcase Card */}
-          <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+          <div className="rounded-2xl border border-border bg-surface p-8 shadow-sm">
             {activeTab === "recorder" && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-foreground">
                       In-Browser Live Audio Recording
                     </h3>
                     <p className="text-xs text-text-secondary">
                       Capture high-fidelity meeting audio directly from your browser with real-time waveform visualization.
                     </p>
                   </div>
-                  <span className="flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-500 border border-red-500/20">
+                  <span className="flex items-center gap-2 rounded-full bg-red-500/10 px-3.5 py-1.5 text-xs font-semibold text-red-500 border border-red-500/20">
                     <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
                     REC 04:18
                   </span>
                 </div>
 
                 {/* Simulated Audio Waveform */}
-                <div className="flex h-24 items-center justify-center gap-1 rounded-lg bg-surface-2 px-4">
-                  {[24, 45, 60, 30, 80, 95, 40, 70, 85, 30, 90, 100, 65, 45, 80, 55, 35, 75, 90, 60, 40, 85, 70, 50].map(
+                <div className="flex h-28 items-center justify-center gap-1.5 rounded-xl bg-surface-2 px-6">
+                  {[24, 45, 60, 30, 80, 95, 40, 70, 85, 30, 90, 100, 65, 45, 80, 55, 35, 75, 90, 60, 40, 85, 70, 50, 65, 80, 45, 90, 75, 60, 35, 50].map(
                     (height, idx) => (
                       <div
                         key={idx}
-                        className="w-1.5 rounded-full bg-accent transition-all duration-150"
+                        className="w-1.5 rounded-full bg-accent transition-all duration-200"
                         style={{ height: `${height}%` }}
                       />
                     )
                   )}
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-text-secondary font-mono">
+                <div className="flex flex-wrap items-center justify-between text-xs text-text-secondary font-mono pt-1">
                   <span>Format: audio/webm;codecs=opus</span>
                   <span>Bitrate: 128 kbps (Lossless chunking enabled)</span>
                 </div>
@@ -736,9 +741,9 @@ export default function HomePage() {
 
             {activeTab === "pdf" && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-foreground">
                       One-Click Executive PDF Document
                     </h3>
                     <p className="text-xs text-text-secondary">
@@ -747,27 +752,27 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-text-tertiary">PDF 2.0 Vector</span>
-                    <span className="rounded bg-accent/10 px-2 py-0.5 font-mono text-xs font-semibold text-accent">
+                    <span className="rounded-md bg-accent/10 px-2.5 py-1 font-mono text-xs font-semibold text-accent border border-accent/20">
                       Two-Pass
                     </span>
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-border bg-surface-2 p-5 space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div>
+                <div className="rounded-xl border border-border bg-surface-2 p-6 space-y-5">
+                  <div className="flex items-center justify-between border-b border-border pb-4">
+                    <div className="space-y-1">
                       <p className="font-mono text-[10px] uppercase text-accent font-semibold">
                         MEETING INTELLIGENCE REPORT
                       </p>
-                      <h4 className="text-sm font-bold text-foreground">
-                        Q4 Strategic Roadmap & Architecture Sync
+                      <h4 className="text-base font-bold text-foreground">
+                        Q4 Strategic Roadmap &amp; Architecture Sync
                       </h4>
                     </div>
                     <span className="font-mono text-xs text-text-tertiary">Page 1 of 3</span>
                   </div>
 
                   <div className="space-y-2 text-xs">
-                    <p className="font-semibold text-foreground">Executive Summary</p>
+                    <p className="font-bold text-foreground">Executive Summary</p>
                     <p className="text-text-secondary leading-relaxed">
                       The engineering team approved the transition to LangGraph state orchestration
                       and Neon pgvector embeddings. Action items were assigned to complete credential
@@ -775,17 +780,17 @@ export default function HomePage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/60 text-xs">
+                  <div className="grid grid-cols-3 gap-4 pt-3 border-t border-border/60 text-xs">
                     <div>
                       <span className="text-text-tertiary">Task:</span>{" "}
-                      <span className="font-medium text-foreground">Migrate Auth</span>
+                      <span className="font-semibold text-foreground">Migrate Auth</span>
                     </div>
                     <div>
                       <span className="text-text-tertiary">Owner:</span>{" "}
-                      <span className="font-medium text-foreground">Alice Chen</span>
+                      <span className="font-semibold text-foreground">Alice Chen</span>
                     </div>
                     <div>
-                      <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-red-500">
+                      <span className="rounded bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-500 border border-red-500/20">
                         High Priority
                       </span>
                     </div>
@@ -796,22 +801,22 @@ export default function HomePage() {
 
             {activeTab === "rag" && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-foreground">
                       Streaming Conversational RAG
                     </h3>
                     <p className="text-xs text-text-secondary">
                       Answers complex inquiries backed by verbatim diarized transcripts and multi-turn conversational memory.
                     </p>
                   </div>
-                  <span className="font-mono text-xs text-emerald-500 flex items-center gap-1">
+                  <span className="font-mono text-xs text-emerald-500 flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     SSE_STREAMING
                   </span>
                 </div>
 
-                <div className="space-y-3 font-mono text-xs">
+                <div className="space-y-4 font-mono text-xs">
                   <div className="flex items-start gap-2 text-text-secondary">
                     <span className="font-bold text-foreground">&gt; User:</span>
                     <p className="text-foreground">
@@ -819,9 +824,9 @@ export default function HomePage() {
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-2">
+                  <div className="rounded-xl border border-border bg-surface-2 p-4 space-y-3">
                     <div className="flex items-center gap-2 text-accent">
-                      <Bot className="h-3.5 w-3.5" />
+                      <Bot className="h-4 w-4" />
                       <span className="font-semibold">Intelligence Agent</span>
                       <span className="text-[10px] text-text-tertiary">[Citations: Meeting #104, #108]</span>
                     </div>
@@ -837,49 +842,49 @@ export default function HomePage() {
 
             {activeTab === "reminders" && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-border pb-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-foreground">
                       Automated Action Item Due-Date Reminders
                     </h3>
                     <p className="text-xs text-text-secondary">
                       Background scheduler tracks task deadlines and dispatches email and Slack reminders with anti-spam deduplication.
                     </p>
                   </div>
-                  <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-500">
+                  <span className="rounded-md bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-500 border border-emerald-500/20">
                     Cron: Hourly Check
                   </span>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2 p-3 text-xs">
-                    <div className="space-y-1">
+                <div className="space-y-3.5">
+                  <div className="flex items-center justify-between rounded-xl border border-border bg-surface-2 p-4 text-xs">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">
+                        <span className="font-bold text-foreground">
                           Complete security audit for tool credentials
                         </span>
-                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-500 border border-red-500/20">
+                        <span className="rounded-full bg-red-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-red-500 border border-red-500/20">
                           Overdue (2026-09-18)
                         </span>
                       </div>
                       <p className="text-text-tertiary">Assignee: Alice Chen • Priority: High</p>
                     </div>
-                    <span className="font-mono text-[11px] text-text-secondary">Email Sent</span>
+                    <span className="font-mono text-xs text-text-secondary">Email Sent</span>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2 p-3 text-xs">
-                    <div className="space-y-1">
+                  <div className="flex items-center justify-between rounded-xl border border-border bg-surface-2 p-4 text-xs">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">
+                        <span className="font-bold text-foreground">
                           Verify SendGrid transactional templates
                         </span>
-                        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-500 border border-amber-500/20">
+                        <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-amber-500 border border-amber-500/20">
                           Due Today
                         </span>
                       </div>
                       <p className="text-text-tertiary">Assignee: Bob Smith • Priority: Medium</p>
                     </div>
-                    <span className="font-mono text-[11px] text-text-secondary">Slack Queued</span>
+                    <span className="font-mono text-xs text-text-secondary">Slack Queued</span>
                   </div>
                 </div>
               </div>
@@ -889,28 +894,28 @@ export default function HomePage() {
       </section>
 
       {/* =====================================================================
-          8. SECTION: BOTTOM CTA BANNER
+          8. SECTION: BOTTOM CTA BANNER (EXPANSIVE & CLEAN)
       ====================================================================== */}
-      <section className="border-t border-border py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-surface to-surface-2 p-8 text-center sm:p-12 lg:p-16 space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 font-mono text-xs text-text-secondary">
+      <section className="border-t border-border py-20">
+        <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12">
+          <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-b from-surface to-surface-2 p-10 text-center sm:p-14 lg:p-20 space-y-7 shadow-lg">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 font-mono text-xs text-text-secondary shadow-sm">
               <span>ENTERPRISE AGENTIC WORKSPACE</span>
             </div>
 
-            <h2 className="mx-auto max-w-2xl text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <h2 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
               Turn your next meeting into immediate execution.
             </h2>
 
-            <p className="mx-auto max-w-xl text-sm leading-relaxed text-text-secondary sm:text-base">
+            <p className="mx-auto max-w-2xl text-base leading-relaxed text-text-secondary sm:text-lg">
               Start recording or upload any audio file in seconds. No credit card required.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-3">
               {user ? (
                 <Link
                   href="/dashboard"
-                  className="flex h-11 items-center gap-2 rounded-lg bg-foreground px-6 font-mono text-sm font-semibold text-background transition-opacity hover:opacity-90"
+                  className="flex h-12 items-center gap-2.5 rounded-xl bg-foreground px-7 font-mono text-sm font-semibold text-background shadow-md transition-all hover:opacity-90 hover:scale-[1.02]"
                 >
                   <span>Go to Dashboard</span>
                   <ArrowRight className="h-4 w-4" />
@@ -919,14 +924,14 @@ export default function HomePage() {
                 <>
                   <Link
                     href="/register"
-                    className="flex h-11 items-center gap-2 rounded-lg bg-foreground px-6 font-mono text-sm font-semibold text-background transition-opacity hover:opacity-90"
+                    className="flex h-12 items-center gap-2.5 rounded-xl bg-foreground px-7 font-mono text-sm font-semibold text-background shadow-md transition-all hover:opacity-90 hover:scale-[1.02]"
                   >
                     <span>Create Free Account</span>
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/login"
-                    className="flex h-11 items-center rounded-lg border border-border bg-surface px-6 font-mono text-sm font-semibold text-foreground transition-colors hover:bg-surface-2"
+                    className="flex h-12 items-center rounded-xl border border-border bg-surface px-7 font-mono text-sm font-semibold text-foreground transition-all hover:bg-surface-2 hover:border-text-secondary"
                   >
                     Sign In to Existing Account
                   </Link>
@@ -938,17 +943,17 @@ export default function HomePage() {
       </section>
 
       {/* =====================================================================
-          9. FOOTER
+          9. FOOTER (CLEAN & MINIMALIST)
       ====================================================================== */}
-      <footer className="border-t border-border py-8 text-xs text-text-tertiary">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-foreground">Meeting Intelligence Agent</span>
+      <footer className="border-t border-border py-10 text-xs text-text-tertiary">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col items-center justify-between gap-6 px-6 sm:flex-row sm:px-8 lg:px-12">
+          <div className="flex items-center gap-2.5">
+            <span className="font-bold text-foreground">Meeting Intelligence Agent</span>
             <span>•</span>
-            <span>v2.0 Enterprise</span>
+            <span className="font-mono">v2.0 Enterprise</span>
           </div>
 
-          <div className="flex items-center gap-4 font-mono text-[11px]">
+          <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">
             <span>FastAPI</span>
             <span>•</span>
             <span>LangGraph</span>
