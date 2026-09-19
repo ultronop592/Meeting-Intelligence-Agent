@@ -163,6 +163,22 @@ def _create_single_ticket(
     return response.get("key", "")
 
 
+def resolve_jira_credentials(user_credentials: dict | None = None) -> tuple[str, str, str, str] | None:
+    """Resolves (url, email, api_token, project_key) from user credentials, falling back to settings."""
+    if user_credentials:
+        url = user_credentials.get("url") or user_credentials.get("jira_url")
+        email = user_credentials.get("email") or user_credentials.get("jira_email")
+        token = user_credentials.get("api_token") or user_credentials.get("jira_api_token")
+        project = user_credentials.get("project_key") or user_credentials.get("jira_project_key")
+        if url and email and token and project:
+            return url.strip(), email.strip(), token.strip(), project.strip().upper()
+
+    if all([settings.jira_url, settings.jira_email, settings.jira_api_token, settings.jira_project_key]):
+        return settings.jira_url, settings.jira_email, settings.jira_api_token, settings.jira_project_key
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # LangGraph Node 5 + Manual re-send function
 # ---------------------------------------------------------------------------
@@ -173,12 +189,8 @@ def create_jira_tickets(state: AgentState) -> dict:
 
     Called by:  graph/agent_graph.py (auto) + FastAPI route (manual)
 
-    INPUT  (reads from AgentState): extraction, meeting_id
+    INPUT  (reads from AgentState): extraction, meeting_id, user_id
     OUTPUT (writes to AgentState):  jira_ticket_ids, completed_nodes
-
-    Creates one Jira ticket per action item.
-    Non-fatal: if one ticket fails, logs the error and continues
-    creating the remaining tickets.
     """
     logger.info("Node 5 — create_jira_tickets | meeting_id: %s", state.meeting_id)
 
@@ -189,26 +201,38 @@ def create_jira_tickets(state: AgentState) -> dict:
             "completed_nodes": state.completed_nodes + ["create_jira_tickets"],
         }
 
-    # --- Guard: check Jira config is set ------------------------------------
-    if not all([
-        settings.jira_url,
-        settings.jira_email,
-        settings.jira_api_token,
-        settings.jira_project_key,
-    ]):
-        error = "Jira credentials not configured in .env — skipping ticket creation."
+    # --- Resolve Jira credentials (User-specific or system default) ---------
+    user_creds = None
+    if getattr(state, "user_id", None):
+        try:
+            from db.database import get_user_tool_credentials
+            import concurrent.futures
+            try:
+                loop = asyncio.get_running_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    user_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "jira")).result()
+            except RuntimeError:
+                user_creds = asyncio.run(get_user_tool_credentials(state.user_id, "jira"))
+        except Exception as exc:
+            logger.debug("Failed to load user Jira credentials: %s", exc)
+
+    creds = resolve_jira_credentials(user_creds)
+    if not creds:
+        error = "Jira credentials not configured. Please connect Jira in Integrations & Tools."
         logger.warning(error)
         return {
             "errors":          state.errors + [error],
             "completed_nodes": state.completed_nodes + ["create_jira_tickets"],
         }
 
+    jira_url, jira_email, jira_api_token, jira_project_key = creds
+
     # --- Initialise Jira client ---------------------------------------------
     jira_client = Jira(
-        url=settings.jira_url,
-        username=settings.jira_email,
-        password=settings.jira_api_token,   # API token used as password
-        cloud=True,                          # Must be True for Jira Cloud
+        url=jira_url,
+        username=jira_email,
+        password=jira_api_token,
+        cloud=True,
     )
 
     ticket_ids: list[str] = []
@@ -217,7 +241,7 @@ def create_jira_tickets(state: AgentState) -> dict:
     # --- Create one ticket per action item -----------------------------------
     for i, item in enumerate(state.extraction.action_items):
         try:
-            payload    = _build_ticket_payload(item, settings.jira_project_key)
+            payload    = _build_ticket_payload(item, jira_project_key)
             ticket_key = _create_single_ticket(jira_client, payload)
 
             if ticket_key:
@@ -229,7 +253,6 @@ def create_jira_tickets(state: AgentState) -> dict:
                     item.description[:50],
                 )
 
-                # Log success to notifications_log table
                 if state.meeting_id:
                     _run_async(log_notification(
                         meeting_id=state.meeting_id,
@@ -243,7 +266,6 @@ def create_jira_tickets(state: AgentState) -> dict:
             logger.error(error_msg)
             errors.append(error_msg)
 
-            # Log failure to notifications_log table
             if state.meeting_id:
                 _run_async(log_notification(
                     meeting_id=state.meeting_id,
@@ -272,31 +294,30 @@ def create_jira_tickets(state: AgentState) -> dict:
 async def send_jira_for_meeting(
     meeting_id:   str,
     action_items: list[ActionItem],
+    credentials:  dict | None = None,
+    user_id:      str | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/jira
-    when the user manually clicks "Create Jira Tickets".
-
-    This is the async wrapper around the same logic above,
-    designed for direct FastAPI route usage without a full AgentState.
-
-    RETURNS:
-        {"created": [...ticket_keys], "failed": [...error_msgs]}
+    Supports user-specific credentials or system fallback.
     """
     logger.info("Manual Jira send | meeting_id: %s | items: %d", meeting_id, len(action_items))
 
-    if not all([
-        settings.jira_url,
-        settings.jira_email,
-        settings.jira_api_token,
-        settings.jira_project_key,
-    ]):
-        raise ValueError("Jira credentials not configured in .env")
+    resolved_user_creds = credentials
+    if not resolved_user_creds and user_id:
+        from db.database import get_user_tool_credentials
+        resolved_user_creds = await get_user_tool_credentials(user_id, "jira")
+
+    creds = resolve_jira_credentials(resolved_user_creds)
+    if not creds:
+        raise ValueError("Jira credentials not configured. Please connect Jira in Integrations & Tools.")
+
+    jira_url, jira_email, jira_api_token, jira_project_key = creds
 
     jira_client = Jira(
-        url=settings.jira_url,
-        username=settings.jira_email,
-        password=settings.jira_api_token,
+        url=jira_url,
+        username=jira_email,
+        password=jira_api_token,
         cloud=True,
     )
 
@@ -305,7 +326,7 @@ async def send_jira_for_meeting(
 
     for item in action_items:
         try:
-            payload    = _build_ticket_payload(item, settings.jira_project_key)
+            payload    = _build_ticket_payload(item, jira_project_key)
             ticket_key = _create_single_ticket(jira_client, payload)
 
             if ticket_key:

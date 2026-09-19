@@ -8,12 +8,15 @@ import { useUploadMeeting } from "@/lib/hooks/use-upload-meeting";
 import { useJobStatus } from "@/lib/hooks/use-job-status";
 import { MeetingCard } from "@/components/meeting/meeting-card";
 import { UploadDropzone } from "@/components/meeting/upload-dropzone";
+import { LiveAudioRecorder } from "@/components/meeting/live-audio-recorder";
 import { ProcessingTimeline } from "@/components/meeting/processing-timeline";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { toUserErrorMessage } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
+import { Mic, UploadCloud } from "lucide-react";
 
 type JobTimerMeta = {
   jobId: string | null;
@@ -67,6 +70,7 @@ export default function MeetingsPage() {
     return localStorage.getItem("mia_global_search") || "";
   });
   const [filter, setFilter] = useState<"all" | "actionable">("all");
+  const [captureMode, setCaptureMode] = useState<"upload" | "record">("upload");
 
   useEffect(() => {
     if (jobStatus.data?.status !== "processing") return;
@@ -224,14 +228,54 @@ export default function MeetingsPage() {
         </Card>
       </div>
 
+      <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+        <button
+          id="tab-upload-audio"
+          type="button"
+          onClick={() => setCaptureMode("upload")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all",
+            captureMode === "upload"
+              ? "bg-accent text-white shadow-xs"
+              : "border border-border bg-surface text-text-secondary hover:text-foreground"
+          )}
+        >
+          <UploadCloud className="h-3.5 w-3.5" />
+          Upload Audio File
+        </button>
+        <button
+          id="tab-record-live"
+          type="button"
+          onClick={() => setCaptureMode("record")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all",
+            captureMode === "record"
+              ? "bg-red-600 text-white shadow-xs"
+              : "border border-border bg-surface text-text-secondary hover:text-foreground"
+          )}
+        >
+          <Mic className="h-3.5 w-3.5" />
+          Record Meeting Live
+        </button>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[1.2fr_2fr]">
-        <UploadDropzone
-          onUpload={(file, onProgress, signal) =>
-            uploadMutation.mutateAsync({ file, onProgress, signal })
-          }
-          disabled={uploadMutation.isPending}
-          maxSizeMb={1024}
-        />
+        {captureMode === "upload" ? (
+          <UploadDropzone
+            onUpload={(file, onProgress, signal) =>
+              uploadMutation.mutateAsync({ file, onProgress, signal })
+            }
+            disabled={uploadMutation.isPending}
+            maxSizeMb={1024}
+          />
+        ) : (
+          <LiveAudioRecorder
+            onRecordingComplete={(file) =>
+              uploadMutation.mutate({ file })
+            }
+            disabled={uploadMutation.isPending}
+          />
+        )}
         <div className="flex flex-col justify-between gap-3 rounded-[16px] border border-border bg-surface p-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">

@@ -232,6 +232,21 @@ Sent by Meeting Intelligence Agent
 """
 
 
+def resolve_email_credentials(user_credentials: dict | None = None) -> tuple[str, str, str] | None:
+    """Resolves (api_key, sender_email, sender_name) from user credentials, falling back to settings."""
+    if user_credentials:
+        api_key = user_credentials.get("api_key") or user_credentials.get("sendgrid_api_key")
+        sender_email = user_credentials.get("sender_email")
+        sender_name = user_credentials.get("sender_name") or "Meeting Intelligence Agent"
+        if api_key and sender_email:
+            return api_key.strip(), sender_email.strip(), sender_name.strip()
+
+    if settings.sendgrid_api_key and settings.sender_email:
+        return settings.sendgrid_api_key.strip(), settings.sender_email.strip(), settings.sender_name.strip()
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Single email send with retry
 # ---------------------------------------------------------------------------
@@ -243,18 +258,25 @@ Sent by Meeting Intelligence Agent
     reraise=True,
 )
 def _send_single_email(
-    to_email:    str,
-    to_name:     str,
-    subject:     str,
-    html_body:   str,
-    plain_body:  str,
+    to_email:     str,
+    to_name:      str,
+    subject:      str,
+    html_body:    str,
+    plain_body:   str,
+    api_key:      str | None = None,
+    sender_email: str | None = None,
+    sender_name:  str | None = None,
 ) -> bool:
     """
     Sends one email via SendGrid.
     Returns True on success, raises on failure.
     """
+    active_key = api_key or settings.sendgrid_api_key
+    active_sender = sender_email or settings.sender_email
+    active_name = sender_name or settings.sender_name
+
     message = Mail(
-        from_email=(settings.sender_email, settings.sender_name),
+        from_email=(active_sender, active_name),
         to_emails=To(email=to_email, name=to_name),
         subject=subject,
     )
@@ -263,7 +285,7 @@ def _send_single_email(
         Content("text/html",  html_body),
     ]
 
-    sg       = SendGridAPIClient(settings.sendgrid_api_key)
+    sg       = SendGridAPIClient(active_key)
     response = sg.send(message)
 
     # SendGrid returns 202 Accepted for successful queuing
@@ -278,28 +300,40 @@ def _send_single_email(
 # ---------------------------------------------------------------------------
 
 def send_emails(
-    state:             AgentState,
+    state:              AgentState,
     participant_emails: dict[str, str],  # {"Alice Chen": "alice@co.com"}
+    credentials:        dict | None = None,
+    user_id:            str | None = None,
 ) -> dict:
     """
     Sends personalised emails to all participants who have email addresses.
-
-    Called by:
-    - send_notifications() in this file (LangGraph auto-send)
-    - FastAPI route /api/meetings/{id}/send/email (manual send)
-
-    participant_emails — mapping of name → email for participants
-    who have emails stored. Built by the FastAPI route from the DB.
-
-    Returns dict with sent/failed counts for logging.
+    Supports user-specific SendGrid credentials or system fallback.
     """
     if not state.extraction or not state.summary:
         logger.warning("send_emails: missing extraction or summary — skipping.")
         return {"sent": 0, "failed": 0}
 
-    if not settings.sendgrid_api_key or not settings.sender_email:
-        logger.warning("SendGrid credentials not configured — skipping emails.")
+    resolved_user_creds = credentials
+    target_user_id = user_id or getattr(state, "user_id", None)
+    if not resolved_user_creds and target_user_id:
+        try:
+            from db.database import get_user_tool_credentials
+            import concurrent.futures
+            try:
+                loop = asyncio.get_running_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    resolved_user_creds = pool.submit(asyncio.run, get_user_tool_credentials(target_user_id, "email")).result()
+            except RuntimeError:
+                resolved_user_creds = asyncio.run(get_user_tool_credentials(target_user_id, "email"))
+        except Exception as exc:
+            logger.debug("Failed to load user email credentials: %s", exc)
+
+    creds = resolve_email_credentials(resolved_user_creds)
+    if not creds:
+        logger.info("SendGrid credentials not configured — skipping emails.")
         return {"sent": 0, "failed": 0}
+
+    api_key, sender_email, sender_name = creds
 
     all_action_items = state.extraction.action_items
     subject          = _build_email_subject(state.summary.title)
@@ -310,8 +344,6 @@ def send_emails(
         if not email:
             continue
 
-        # Filter action items that belong to this person
-        # Case-insensitive name matching for robustness
         my_items = [
             item for item in all_action_items
             if item.owner.lower() == name.lower()
@@ -338,6 +370,9 @@ def send_emails(
                 subject=subject,
                 html_body=html_body,
                 plain_body=plain_body,
+                api_key=api_key,
+                sender_email=sender_email,
+                sender_name=sender_name,
             )
 
             sent_count += 1
@@ -378,17 +413,23 @@ async def send_email_for_meeting(
     short_summary:      str,
     all_action_items:   list[ActionItem],
     participant_emails: dict[str, str],
+    credentials:        dict | None = None,
+    user_id:            str | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/email
-    when user clicks "Email Participants" button.
-
-    participant_emails — {name: email} for selected participants only
-    (user may have unchecked some on the frontend)
-
-    RETURNS:
-        {"sent": 3, "failed": 0}
+    Supports user-specific credentials or system fallback.
     """
+    resolved_user_creds = credentials
+    if not resolved_user_creds and user_id:
+        from db.database import get_user_tool_credentials
+        resolved_user_creds = await get_user_tool_credentials(user_id, "email")
+
+    creds = resolve_email_credentials(resolved_user_creds)
+    if not creds:
+        raise ValueError("SendGrid email not configured. Please connect SendGrid in Integrations & Tools.")
+
+    api_key, sender_email, sender_name = creds
     sent, failed = 0, 0
 
     for name, email in participant_emails.items():
@@ -397,7 +438,16 @@ async def send_email_for_meeting(
         plain_body = _build_email_text(name, meeting_title, short_summary, my_items)
 
         try:
-            _send_single_email(email, name, _build_email_subject(meeting_title), html_body, plain_body)
+            _send_single_email(
+                to_email=email,
+                to_name=name,
+                subject=_build_email_subject(meeting_title),
+                html_body=html_body,
+                plain_body=plain_body,
+                api_key=api_key,
+                sender_email=sender_email,
+                sender_name=sender_name,
+            )
             sent += 1
             await log_notification(meeting_id, "email", "sent", f"{name} <{email}>")
         except Exception as e:

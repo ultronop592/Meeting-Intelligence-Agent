@@ -186,6 +186,20 @@ def _post_to_slack(webhook_url: str, text: str, blocks: list[dict]) -> bool:
     return True
 
 
+def resolve_slack_credentials(user_credentials: dict | None = None) -> tuple[str, str] | None:
+    """Resolves (webhook_url, channel) from user credentials, falling back to settings."""
+    if user_credentials:
+        url = user_credentials.get("webhook_url") or user_credentials.get("slack_webhook_url")
+        channel = user_credentials.get("channel") or user_credentials.get("slack_channel") or "#general"
+        if url:
+            return url.strip(), channel.strip()
+
+    if settings.slack_webhook_url:
+        return settings.slack_webhook_url.strip(), settings.slack_channel.strip()
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # LangGraph Node 7 — send_notifications
 # This is the ACTUAL node registered in agent_graph.py.
@@ -203,7 +217,7 @@ def send_notifications(state: AgentState) -> dict:
     Manual sends use send_slack_for_meeting() + send_email_for_meeting()
     directly from FastAPI routes.
 
-    INPUT  (reads from AgentState): summary, extraction, meeting_id
+    INPUT  (reads from AgentState): summary, extraction, meeting_id, user_id
     OUTPUT (writes to AgentState):  notification_results, completed_nodes
 
     Non-fatal: failures are logged but do not stop node completion.
@@ -222,7 +236,23 @@ def send_notifications(state: AgentState) -> dict:
     errors: list[str]                = list(state.errors)
 
     # --- 1. Send Slack notification ------------------------------------------
-    if settings.slack_webhook_url:
+    user_slack_creds = None
+    if getattr(state, "user_id", None):
+        try:
+            from db.database import get_user_tool_credentials
+            import concurrent.futures
+            try:
+                loop = asyncio.get_running_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    user_slack_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "slack")).result()
+            except RuntimeError:
+                user_slack_creds = asyncio.run(get_user_tool_credentials(state.user_id, "slack"))
+        except Exception as exc:
+            logger.debug("Failed to load user Slack credentials: %s", exc)
+
+    slack_creds = resolve_slack_credentials(user_slack_creds)
+    if slack_creds:
+        webhook_url, channel = slack_creds
         try:
             blocks = _build_slack_blocks(
                 meeting_title=state.summary.title,
@@ -234,12 +264,12 @@ def send_notifications(state: AgentState) -> dict:
             )
 
             _post_to_slack(
-                webhook_url=settings.slack_webhook_url,
+                webhook_url=webhook_url,
                 text=f"Meeting Summary: {state.summary.title}",
                 blocks=blocks,
             )
 
-            logger.info("Slack notification sent to %s", settings.slack_channel)
+            logger.info("Slack notification sent to %s", channel)
             notification_results.append({"type": "slack", "status": "sent"})
 
             if state.meeting_id:
@@ -247,7 +277,7 @@ def send_notifications(state: AgentState) -> dict:
                     meeting_id=state.meeting_id,
                     notification_type="slack",
                     status="sent",
-                    detail=settings.slack_channel,
+                    detail=channel,
                 ))
 
         except Exception as e:
@@ -264,40 +294,29 @@ def send_notifications(state: AgentState) -> dict:
                     detail=str(e)[:200],
                 ))
     else:
-        logger.warning("SLACK_WEBHOOK_URL not configured — skipping Slack notification.")
+        logger.info("Slack not configured — skipping Slack notification.")
 
     # --- 2. Send personalised emails ----------------------------------------
-    # For auto-send: we don't have emails stored yet in the pipeline
-    # (emails are added later via frontend settings page).
-    # So we attempt email sending but it will only work if participants
-    # have emails stored from a previous session or settings page.
-    # The manual send (POST /api/meetings/{id}/send/email) is the
-    # proper way to send emails with full email addresses.
-    if settings.sendgrid_api_key:
-        try:
-            # Build participant_emails from extraction
-            # In auto-send, emails are empty — this is expected
-            # Users add emails via the settings/participants page
-            participant_emails: dict[str, str] = {}
+    try:
+        participant_emails: dict[str, str] = {}
+        email_result = send_emails(
+            state=state,
+            participant_emails=participant_emails,
+            user_id=getattr(state, "user_id", None),
+        )
 
-            email_result = send_emails(
-                state=state,
-                participant_emails=participant_emails,
-            )
-
+        if email_result.get("sent", 0) > 0 or email_result.get("failed", 0) > 0:
             notification_results.append({
                 "type":   "email",
-                "status": "sent",
+                "status": "sent" if email_result.get("sent", 0) > 0 else "failed",
                 "sent":   email_result["sent"],
                 "failed": email_result["failed"],
             })
 
-        except Exception as e:
-            error_msg = f"Email sending failed: {e}"
-            logger.error(error_msg)
-            errors.append(error_msg)
-    else:
-        logger.warning("SENDGRID_API_KEY not configured — skipping emails.")
+    except Exception as e:
+        error_msg = f"Email sending failed: {e}"
+        logger.error(error_msg)
+        errors.append(error_msg)
 
     logger.info(
         "Node 7 complete | notifications: %d",
@@ -316,25 +335,32 @@ def send_notifications(state: AgentState) -> dict:
 # ---------------------------------------------------------------------------
 
 async def send_slack_for_meeting(
-    meeting_id:      str,
-    meeting_title:   str,
-    short_summary:   str,
-    action_items:    list[ActionItem],
-    participants:    list[str],
-    decisions_count: int,
+    meeting_id:       str,
+    meeting_title:    str,
+    short_summary:    str,
+    action_items:     list[ActionItem],
+    participants:     list[str],
+    decisions_count:  int,
     duration_minutes: int,
+    credentials:      dict | None = None,
+    user_id:          str | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/slack
-    when user clicks "Post to Slack" button.
-
-    RETURNS:
-        {"success": True, "error": None}
+    Supports user-specific credentials or system fallback.
     """
     logger.info("Manual Slack send | meeting_id: %s", meeting_id)
 
-    if not settings.slack_webhook_url:
-        return {"success": False, "error": "SLACK_WEBHOOK_URL not configured"}
+    resolved_user_creds = credentials
+    if not resolved_user_creds and user_id:
+        from db.database import get_user_tool_credentials
+        resolved_user_creds = await get_user_tool_credentials(user_id, "slack")
+
+    slack_creds = resolve_slack_credentials(resolved_user_creds)
+    if not slack_creds:
+        return {"success": False, "error": "Slack not configured. Please connect Slack in Integrations & Tools."}
+
+    webhook_url, channel = slack_creds
 
     try:
         blocks = _build_slack_blocks(
@@ -347,7 +373,7 @@ async def send_slack_for_meeting(
         )
 
         _post_to_slack(
-            webhook_url=settings.slack_webhook_url,
+            webhook_url=webhook_url,
             text=f"Meeting Summary: {meeting_title}",
             blocks=blocks,
         )
@@ -356,7 +382,7 @@ async def send_slack_for_meeting(
             meeting_id=meeting_id,
             notification_type="slack",
             status="sent",
-            detail=settings.slack_channel,
+            detail=channel,
         )
 
         return {"success": True, "error": None}

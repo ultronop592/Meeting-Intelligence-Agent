@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Search,
+  SlidersHorizontal,
   Sparkles,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/search", label: "Memory & Search", icon: Search },
   { href: "/analytics", label: "Analytics", icon: ChartPie },
   { href: "/agent-chat", label: "Agent Chat", icon: MessagesSquare },
+  { href: "/integrations", label: "Integrations", icon: SlidersHorizontal },
 ];
 
 type SidebarProps = {

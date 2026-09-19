@@ -1,6 +1,7 @@
 import uuid 
 from datetime import datetime, timezone
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum as SAEnum,
@@ -10,6 +11,7 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    UniqueConstraint,
 )
 
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -43,9 +45,10 @@ class User(Base):
     full_name       = Column(String, nullable=True)
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
 
-    meetings        = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
-    processing_jobs = relationship("ProcessingJob", back_populates="user")
-    chat_sessions   = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    meetings         = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
+    processing_jobs  = relationship("ProcessingJob", back_populates="user")
+    chat_sessions    = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    tool_credentials = relationship("UserToolCredential", back_populates="user", cascade="all, delete-orphan")
 
 
 # TABLE 1 — meetings
@@ -241,3 +244,26 @@ class ChatSession(Base):
 
     user    = relationship("User",    back_populates="chat_sessions")
     meeting = relationship("Meeting", back_populates="chat_sessions")
+
+
+# TABLE 8 — user_tool_credentials
+
+
+class UserToolCredential(Base):
+    """Stores user-specific external tool credentials (Jira, Slack, Email, Calendar)."""
+
+    __tablename__ = "user_tool_credentials"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tool_name", name="uq_user_tool"),
+    )
+
+    id          = Column(String, primary_key=True, default=_uuid)
+    user_id     = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    tool_name   = Column(String, nullable=False, index=True)  # "jira", "slack", "email", "calendar"
+    credentials = Column(JSON, nullable=False, default=dict)
+    is_active   = Column(Boolean, nullable=False, default=True)
+
+    created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at  = Column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    user        = relationship("User", back_populates="tool_credentials")

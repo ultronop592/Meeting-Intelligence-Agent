@@ -528,6 +528,7 @@ async def send_slack(
         participants=[p.name for p in participants],
         decisions_count=int(decisions_count or 0),
         duration_minutes=meeting.duration_minutes,
+        user_id=current_user.id,
     )
 
     if not result["success"]:
@@ -572,6 +573,7 @@ async def send_jira(
         result = await send_jira_for_meeting(
             meeting_id=meeting_id,
             action_items=action_items,
+            user_id=current_user.id,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
@@ -610,6 +612,7 @@ async def send_calendar(
         participants=participant_names,
         emails=participant_emails,
         days_from_now=days_from_now,
+        user_id=current_user.id,
     )
 
     if result.get("error"):
@@ -624,6 +627,59 @@ async def send_calendar(
         "failed": 0,
         "event_id": result.get("event_id"),
         "event_url": result.get("event_url"),
+    }
+
+
+@router.post("/meetings/{meeting_id}/send/email", tags=["meetings"])
+async def send_email(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send personalized emails to participants with email addresses."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    _verify_meeting_ownership(meeting, current_user)
+
+    action_items_rows = (
+        await db.execute(select(DBActionItem).where(DBActionItem.meeting_id == meeting_id))
+    ).scalars().all()
+    participants = (
+        await db.execute(select(Participant).where(Participant.meeting_id == meeting_id))
+    ).scalars().all()
+    participant_emails = {p.name: p.email for p in participants if p.email}
+
+    if not participant_emails:
+        return {"message": "No participant email addresses configured.", "sent": 0, "failed": 0}
+
+    from models.schemas import ActionItem as ActionItemSchema, Priority
+    action_items = [
+        ActionItemSchema(
+            description=i.description,
+            owner=i.owner,
+            due_date=i.due_date,
+            priority=Priority(i.priority),
+        )
+        for i in action_items_rows
+    ]
+
+    try:
+        result = await send_email_for_meeting(
+            meeting_id=meeting_id,
+            meeting_title=meeting.title,
+            short_summary=meeting.short_summary,
+            all_action_items=action_items,
+            participant_emails=participant_emails,
+            user_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+    return {
+        "message": f"Email dispatch complete — sent: {result['sent']}, failed: {result['failed']}",
+        "sent": result["sent"],
+        "failed": result["failed"],
     }
 
 
@@ -675,6 +731,7 @@ async def dispatch_meeting(
                 participants=[p.name for p in participants],
                 decisions_count=int(decisions_count or 0),
                 duration_minutes=meeting.duration_minutes,
+                user_id=current_user.id,
             )
             results["slack"] = {
                 "status": "sent" if slack_res["success"] else "failed",
@@ -712,6 +769,7 @@ async def dispatch_meeting(
                 jira_res = await send_jira_for_meeting(
                     meeting_id=meeting_id,
                     action_items=action_items,
+                    user_id=current_user.id,
                 )
                 results["jira"] = {
                     "status": "sent" if jira_res["created"] else ("failed" if jira_res["failed"] else "skipped"),
@@ -735,6 +793,7 @@ async def dispatch_meeting(
                 participants=[p.name for p in participants],
                 emails=[p.email for p in participants if p.email],
                 days_from_now=payload.days_from_now,
+                user_id=current_user.id,
             )
             results["calendar"] = {
                 "status": "sent" if not cal_res.get("error") else "failed",
@@ -779,6 +838,7 @@ async def dispatch_meeting(
                     short_summary=meeting.short_summary,
                     all_action_items=action_items,
                     participant_emails=participant_emails,
+                    user_id=current_user.id,
                 )
                 results["email"] = {
                     "status": "sent" if email_res["sent"] > 0 else "failed",

@@ -78,20 +78,38 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 # Build Google Calendar service client
 # ---------------------------------------------------------------------------
 
-def _get_calendar_service():
+def resolve_calendar_credentials(user_credentials: dict | None = None) -> tuple[str, str] | None:
+    """Resolves (calendar_id, credentials_json) from user credentials, falling back to settings."""
+    if user_credentials:
+        cal_id = user_credentials.get("calendar_id") or user_credentials.get("google_calendar_id")
+        creds_json = user_credentials.get("credentials_json") or user_credentials.get("google_calendar_credentials_json")
+        if cal_id and creds_json:
+            return cal_id.strip(), creds_json.strip()
+
+    if settings.google_calendar_id and settings.google_calendar_credentials_json:
+        return settings.google_calendar_id.strip(), settings.google_calendar_credentials_json.strip()
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Build Google Calendar service client
+# ---------------------------------------------------------------------------
+
+def _get_calendar_service(credentials_json: str | None = None):
     """
     Creates and returns an authenticated Google Calendar API client.
-    Reads service account credentials from GOOGLE_CALENDAR_CREDENTIALS_JSON.
+    Reads service account credentials from credentials_json or settings.
     Raises ValueError if credentials are not configured.
     """
-    if not settings.google_calendar_credentials_json:
-        raise ValueError("GOOGLE_CALENDAR_CREDENTIALS_JSON not set in .env")
+    raw_json = credentials_json or settings.google_calendar_credentials_json
+    if not raw_json:
+        raise ValueError("Google Calendar credentials not configured. Please connect Calendar in Integrations.")
 
     try:
-        # Parse the JSON credentials string from .env
-        credentials_info = json.loads(settings.google_calendar_credentials_json)
+        credentials_info = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in GOOGLE_CALENDAR_CREDENTIALS_JSON: {e}")
+        raise ValueError(f"Invalid JSON in Google Calendar credentials: {e}")
 
     # Create service account credentials with Calendar scope
     credentials = service_account.Credentials.from_service_account_info(
@@ -200,7 +218,7 @@ def book_calendar(state: AgentState) -> dict:
 
     Called by:  graph/agent_graph.py (auto) + FastAPI route (manual)
 
-    INPUT  (reads from AgentState): summary, extraction, meeting_id
+    INPUT  (reads from AgentState): summary, extraction, meeting_id, user_id
     OUTPUT (writes to AgentState):  calendar_event_id, completed_nodes
 
     Non-fatal: if booking fails, logs error and continues to Node 7.
@@ -216,17 +234,34 @@ def book_calendar(state: AgentState) -> dict:
             "completed_nodes": state.completed_nodes + ["book_calendar"],
         }
 
-    # --- Guard: check Calendar config is set --------------------------------
-    if not settings.google_calendar_credentials_json or not settings.google_calendar_id:
-        error = "Google Calendar credentials not configured in .env — skipping."
+    # --- Resolve Calendar credentials (User-specific or system default) ------
+    user_creds = None
+    if getattr(state, "user_id", None):
+        try:
+            from db.database import get_user_tool_credentials
+            import concurrent.futures
+            try:
+                loop = asyncio.get_running_loop()
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    user_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "calendar")).result()
+            except RuntimeError:
+                user_creds = asyncio.run(get_user_tool_credentials(state.user_id, "calendar"))
+        except Exception as exc:
+            logger.debug("Failed to load user Calendar credentials: %s", exc)
+
+    creds = resolve_calendar_credentials(user_creds)
+    if not creds:
+        error = "Google Calendar credentials not configured. Please connect Calendar in Integrations & Tools."
         logger.warning(error)
         return {
             "errors":          state.errors + [error],
             "completed_nodes": state.completed_nodes + ["book_calendar"],
         }
 
+    calendar_id, credentials_json = creds
+
     try:
-        service = _get_calendar_service()
+        service = _get_calendar_service(credentials_json)
 
         # Participants list — use names from extraction if available
         participants = (
@@ -235,11 +270,7 @@ def book_calendar(state: AgentState) -> dict:
             else ["Meeting participants"]
         )
 
-        # For auto-booking we don't have emails yet (they're optional in DB)
-        # The user can add emails later in settings and re-book manually
         emails: list[str] = []
-
-        # Schedule follow-up 7 days from now
         follow_up_date = datetime.now(timezone.utc) + timedelta(days=7)
 
         event_payload = _build_event_payload(
@@ -251,7 +282,7 @@ def book_calendar(state: AgentState) -> dict:
 
         event = _create_calendar_event(
             service,
-            settings.google_calendar_id,
+            calendar_id,
             event_payload,
         )
 
@@ -264,7 +295,6 @@ def book_calendar(state: AgentState) -> dict:
             event_url,
         )
 
-        # Log to notifications_log
         if state.meeting_id:
             _run_async(log_notification(
                 meeting_id=state.meeting_id,
@@ -327,16 +357,12 @@ async def send_calendar_for_meeting(
     participants:  list[str],
     emails:        list[str],
     days_from_now: int = 7,
+    credentials:   dict | None = None,
+    user_id:       str | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/calendar
-    when user manually clicks "Book Follow-up".
-
-    emails — participant email addresses from the frontend form
-    days_from_now — how many days ahead to schedule (default 7)
-
-    RETURNS:
-        {"event_id": "...", "event_url": "...", "error": None}
+    Supports user-specific credentials or system fallback.
     """
     logger.info(
         "Manual calendar send | meeting_id: %s | participants: %d",
@@ -344,8 +370,23 @@ async def send_calendar_for_meeting(
         len(participants),
     )
 
+    resolved_user_creds = credentials
+    if not resolved_user_creds and user_id:
+        from db.database import get_user_tool_credentials
+        resolved_user_creds = await get_user_tool_credentials(user_id, "calendar")
+
+    creds = resolve_calendar_credentials(resolved_user_creds)
+    if not creds:
+        return {
+            "event_id": None,
+            "event_url": None,
+            "error": "Google Calendar credentials not configured. Please connect Calendar in Integrations & Tools.",
+        }
+
+    calendar_id, credentials_json = creds
+
     try:
-        service = _get_calendar_service()
+        service = _get_calendar_service(credentials_json)
 
         follow_up_date = datetime.now(timezone.utc) + timedelta(days=days_from_now)
 
@@ -358,7 +399,7 @@ async def send_calendar_for_meeting(
 
         event = _create_calendar_event(
             service,
-            settings.google_calendar_id,
+            calendar_id,
             event_payload,
         )
 

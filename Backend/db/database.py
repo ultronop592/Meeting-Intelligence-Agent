@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import(
 
 from core.config import settings
 from db.models import(
-    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob, ChatSession
+    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob, ChatSession, UserToolCredential
 )
 from models.schemas import AgentState, EmbeddingStatus
 
@@ -131,6 +131,23 @@ async def init_db() -> None:
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+            """))
+
+            # --- user_tool_credentials table ---
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_tool_credentials (
+                    id VARCHAR PRIMARY KEY,
+                    user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    tool_name VARCHAR NOT NULL,
+                    credentials JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CONSTRAINT uq_user_tool UNIQUE (user_id, tool_name)
+                )
+            """))
+            await conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_user_tool_credentials_user ON user_tool_credentials(user_id)
             """))
 
     logger.info("Database tables verified / created.")
@@ -597,4 +614,103 @@ async def delete_chat_session(
         await session.delete(chat_sess)
         await session.commit()
         return True
+
+
+# =============================================================================
+# USER TOOL CREDENTIALS — Per-User Integration Settings
+# =============================================================================
+
+async def get_user_tool_credentials(
+    user_id: str,
+    tool_name: str,
+    db: AsyncSession | None = None,
+) -> dict | None:
+    """Retrieve decrypted/stored credentials dict for a specific tool for a user."""
+    from sqlalchemy import select
+    async with _get_context_session(db) as session:
+        stmt = select(UserToolCredential).where(
+            UserToolCredential.user_id == user_id,
+            UserToolCredential.tool_name == tool_name,
+            UserToolCredential.is_active.is_(True),
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if not row or not row.credentials:
+            return None
+        return dict(row.credentials)
+
+
+async def save_user_tool_credentials(
+    user_id: str,
+    tool_name: str,
+    credentials: dict,
+    db: AsyncSession | None = None,
+) -> dict:
+    """Create or update credentials for a user and tool."""
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    async with _get_context_session(db) as session:
+        stmt = select(UserToolCredential).where(
+            UserToolCredential.user_id == user_id,
+            UserToolCredential.tool_name == tool_name,
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if row:
+            # Merge with existing credentials so omitted secret fields aren't cleared
+            current = dict(row.credentials or {})
+            for k, v in credentials.items():
+                if v is not None and v != "":
+                    current[k] = v
+            row.credentials = current
+            row.is_active = True
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            row = UserToolCredential(
+                user_id=user_id,
+                tool_name=tool_name,
+                credentials=credentials,
+                is_active=True,
+            )
+            session.add(row)
+
+        await session.commit()
+        await session.refresh(row)
+        return {
+            "tool_name": row.tool_name,
+            "is_active": row.is_active,
+            "updated_at": row.updated_at,
+        }
+
+
+async def delete_user_tool_credentials(
+    user_id: str,
+    tool_name: str,
+    db: AsyncSession | None = None,
+) -> bool:
+    """Remove/disconnect credentials for a tool."""
+    from sqlalchemy import select
+    async with _get_context_session(db) as session:
+        stmt = select(UserToolCredential).where(
+            UserToolCredential.user_id == user_id,
+            UserToolCredential.tool_name == tool_name,
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if not row:
+            return False
+        await session.delete(row)
+        await session.commit()
+        return True
+
+
+async def list_user_tool_credentials(
+    user_id: str,
+    db: AsyncSession | None = None,
+) -> dict[str, dict]:
+    """List all stored credentials for a user mapped by tool_name."""
+    from sqlalchemy import select
+    async with _get_context_session(db) as session:
+        stmt = select(UserToolCredential).where(UserToolCredential.user_id == user_id)
+        rows = (await session.execute(stmt)).scalars().all()
+        return {r.tool_name: dict(r.credentials or {}) for r in rows if r.is_active}
+
+
 

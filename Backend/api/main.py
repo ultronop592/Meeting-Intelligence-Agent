@@ -12,6 +12,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.auth_routes import auth_router
+from api.integrations_routes import integrations_router
 from api.routes import router
 from core.config import settings
 from core.limiter import limiter
@@ -110,6 +111,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(auth_router)
+app.include_router(integrations_router)
 app.include_router(router)
 
 

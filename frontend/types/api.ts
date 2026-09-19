@@ -279,3 +279,62 @@ export type DispatchMeetingResponse = {
   results: Record<string, DispatchChannelResult>;
 };
 
+// =============================================================================
+// Integrations & User Tool Credentials
+// =============================================================================
+
+export type ToolName = "jira" | "slack" | "email" | "calendar";
+
+export type ToolStatusResponse = {
+  tool_name: ToolName;
+  connected: boolean;
+  is_custom: boolean;
+  details: {
+    url?: string;
+    email?: string;
+    project_key?: string;
+    has_api_token?: boolean;
+    api_token_masked?: string | null;
+    channel?: string;
+    has_webhook_url?: boolean;
+    webhook_url_masked?: string | null;
+    sender_email?: string;
+    sender_name?: string;
+    has_api_key?: boolean;
+    api_key_masked?: string | null;
+    calendar_id?: string;
+    has_credentials_json?: boolean;
+    is_system_default?: boolean;
+    [key: string]: unknown;
+  };
+};
+
+export type TestConnectionResponse = {
+  success: boolean;
+  message: string;
+  error?: string | null;
+};
+
+export type JiraCredentialPayload = {
+  url: string;
+  email: string;
+  api_token?: string;
+  project_key: string;
+};
+
+export type SlackCredentialPayload = {
+  webhook_url?: string;
+  channel?: string;
+};
+
+export type EmailCredentialPayload = {
+  api_key?: string;
+  sender_email: string;
+  sender_name?: string;
+};
+
+export type CalendarCredentialPayload = {
+  calendar_id: string;
+  credentials_json?: string;
+};
+

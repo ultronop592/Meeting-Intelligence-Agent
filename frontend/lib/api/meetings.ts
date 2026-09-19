@@ -19,6 +19,9 @@ import type {
   ChatSessionListItem,
   ChatSessionDetail,
   CreateChatSessionRequest,
+  ToolName,
+  ToolStatusResponse,
+  TestConnectionResponse,
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
@@ -358,6 +361,28 @@ export type DetailedHealthResponse = {
     configured: boolean;
   };
   timestamp: string;
+};
+
+export const integrationsApi = {
+  getIntegrations: () =>
+    apiRequest<Record<ToolName, ToolStatusResponse>>("/integrations"),
+
+  updateIntegration: (toolName: ToolName, payload: Record<string, unknown>) =>
+    apiRequest<{ message: string; tool_name: string; is_active: boolean }>(`/integrations/${toolName}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  disconnectIntegration: (toolName: ToolName) =>
+    apiRequest<{ message: string }>(`/integrations/${toolName}`, {
+      method: "DELETE",
+    }),
+
+  testConnection: (toolName: ToolName, payload?: Record<string, unknown>) =>
+    apiRequest<TestConnectionResponse>(`/integrations/${toolName}/test`, {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    }),
 };
 
 
