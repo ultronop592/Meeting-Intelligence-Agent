@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Source_Sans_3, Source_Serif_4 } from "next/font/google";
+import { Source_Sans_3, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/providers/toast-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -18,9 +18,15 @@ const sourceSerif = Source_Serif_4({
   display: "swap",
 });
 
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Meeting Intelligence AI",
-  description: "Meeting intelligence dashboard",
+  title: "Meeting Intelligence Agent | Autonomous AI Meeting Platform",
+  description: "Autonomous agentic AI platform for meeting transcription, structured entity extraction, vector memory, and automated workflow dispatch.",
 };
 
 export default function RootLayout({
@@ -31,7 +37,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sourceSans.variable} ${sourceSerif.variable}`}
+      className={`${sourceSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>
