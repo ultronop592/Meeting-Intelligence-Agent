@@ -426,3 +426,140 @@ async def test_upload_empty_file(authenticated_client):
     )
     assert resp.status_code == 400
     assert "Uploaded file is empty" in resp.json()["detail"]
+
+
+# =============================================================================
+# Chat Sessions & Multi-Turn Memory Endpoints
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_create_and_get_chat_session(authenticated_client, seeded_meeting):
+    # 1. Create chat session
+    create_resp = await authenticated_client.post(
+        "/chat/sessions",
+        json={"title": "Q3 Planning Discussion", "meeting_id": seeded_meeting.id},
+    )
+    assert create_resp.status_code == 200
+    session_data = create_resp.json()
+    assert session_data["title"] == "Q3 Planning Discussion"
+    assert session_data["meeting_id"] == seeded_meeting.id
+    assert session_data["messages"] == []
+    session_id = session_data["id"]
+
+    # 2. Get chat session by ID
+    get_resp = await authenticated_client.get(f"/chat/sessions/{session_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_list_chat_sessions(authenticated_client, seeded_meeting):
+    # Create two sessions
+    await authenticated_client.post(
+        "/chat/sessions",
+        json={"title": "Session 1", "meeting_id": seeded_meeting.id},
+    )
+    await authenticated_client.post(
+        "/chat/sessions",
+        json={"title": "Session 2", "meeting_id": seeded_meeting.id},
+    )
+
+    resp = await authenticated_client.get("/chat/sessions")
+    assert resp.status_code == 200
+    sessions = resp.json()
+    assert len(sessions) >= 2
+    titles = [s["title"] for s in sessions]
+    assert "Session 1" in titles
+    assert "Session 2" in titles
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session(authenticated_client):
+    # Create session
+    create_resp = await authenticated_client.post(
+        "/chat/sessions",
+        json={"title": "Session To Delete"},
+    )
+    assert create_resp.status_code == 200
+    session_id = create_resp.json()["id"]
+
+    # Delete session
+    del_resp = await authenticated_client.delete(f"/chat/sessions/{session_id}")
+    assert del_resp.status_code == 200
+    assert del_resp.json()["ok"] is True
+
+    # Confirm 404
+    get_resp = await authenticated_client.get(f"/chat/sessions/{session_id}")
+    assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_chat_session_tenant_isolation(async_client, db_session, authenticated_client):
+    """User B cannot access or delete User A's chat session."""
+    import uuid
+    from db.models import User
+    from core.auth import hash_password, create_access_token
+
+    # 1. User A creates session
+    create_resp = await authenticated_client.post(
+        "/chat/sessions",
+        json={"title": "User A Private Session"},
+    )
+    assert create_resp.status_code == 200
+    session_id = create_resp.json()["id"]
+
+    # 2. Setup User B
+    user_b = User(
+        id=f"user-b-{uuid.uuid4().hex[:8]}",
+        email=f"userb_{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password=hash_password("Password123!"),
+        full_name="User B",
+    )
+    db_session.add(user_b)
+    await db_session.commit()
+
+    token_b = create_access_token({"sub": user_b.id, "email": user_b.email})
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # 3. User B attempts to read User A's session -> 403
+    resp_get = await async_client.get(f"/chat/sessions/{session_id}", headers=headers_b)
+    assert resp_get.status_code == 403
+
+    # 4. User B attempts to delete User A's session -> 403
+    resp_del = await async_client.delete(f"/chat/sessions/{session_id}", headers=headers_b)
+    assert resp_del.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_query_persists_multiturn_chat_session(authenticated_client, seeded_meeting, seeded_participant):
+    # 1. First turn: no session_id supplied -> auto-creates session
+    resp1 = await authenticated_client.post(
+        "/query",
+        json={"question": "Who attended the meeting?", "meeting_id": seeded_meeting.id},
+    )
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1.get("session_id") is not None
+    session_id = data1["session_id"]
+    assert "Alice Chen" in data1["answer"]
+
+    # 2. Second turn: provide session_id
+    resp2 = await authenticated_client.post(
+        "/query",
+        json={"question": "What is their role?", "meeting_id": seeded_meeting.id, "session_id": session_id},
+    )
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2.get("session_id") == session_id
+
+    # 3. Retrieve session from DB endpoint -> should have 4 messages (2 user + 2 assistant)
+    session_resp = await authenticated_client.get(f"/chat/sessions/{session_id}")
+    assert session_resp.status_code == 200
+    sess = session_resp.json()
+    assert len(sess["messages"]) == 4
+    assert sess["messages"][0]["role"] == "user"
+    assert "Who attended the meeting?" in sess["messages"][0]["content"]
+    assert sess["messages"][1]["role"] == "assistant"
+    assert sess["messages"][2]["role"] == "user"
+    assert sess["messages"][3]["role"] == "assistant"
+

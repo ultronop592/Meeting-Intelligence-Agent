@@ -45,6 +45,7 @@ class User(Base):
 
     meetings        = relationship("Meeting", back_populates="user", cascade="all, delete-orphan")
     processing_jobs = relationship("ProcessingJob", back_populates="user")
+    chat_sessions   = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
 
 # TABLE 1 — meetings
@@ -84,6 +85,7 @@ class Meeting(Base):
     decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
     participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
     notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
+    chat_sessions     = relationship("ChatSession",     back_populates="meeting", cascade="all, delete-orphan")
 
 
 # TABLE 2 — action_items
@@ -218,3 +220,24 @@ class ProcessingJob(Base):
 
     started_at   = Column(DateTime(timezone=True), default=_now, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+# TABLE 7 — chat_sessions
+
+
+class ChatSession(Base):
+    """Persists multi-turn conversation sessions between user and the Meeting Intelligence Agent."""
+
+    __tablename__ = "chat_sessions"
+
+    id         = Column(String, primary_key=True, default=_uuid)
+    user_id    = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    meeting_id = Column(String, ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True, index=True)
+    title      = Column(String, nullable=False, default="New Conversation")
+    messages   = Column(JSON, nullable=False, default=list)
+
+    created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    user    = relationship("User",    back_populates="chat_sessions")
+    meeting = relationship("Meeting", back_populates="chat_sessions")

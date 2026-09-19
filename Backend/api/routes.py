@@ -16,9 +16,14 @@ from core.limiter import limiter
 from core.config import settings
 from db.database import (
     AsyncSessionLocal,
+    append_chat_session_turn,
+    create_chat_session,
     create_processing_job,
+    delete_chat_session,
+    get_chat_session,
     get_db,
     get_processing_job,
+    list_chat_sessions,
     update_processing_job,
 )
 from db.models import ActionItem as DBActionItem
@@ -31,6 +36,10 @@ from models.schemas import (
     AgentQueryRequest,
     AgentQueryResponse,
     ChatMessage,
+    ChatMessageDetail,
+    ChatSessionDetail,
+    ChatSessionListItem,
+    CreateChatSessionRequest,
     DecisionRow,
     DispatchMeetingRequest,
     DispatchMeetingResponse,
@@ -953,6 +962,75 @@ def _get_fallback_rule_answer(meeting_context: str, question: str) -> str:
     return "The meeting record and summary have been loaded. Please ask a specific question regarding topics discussed."
 
 
+# =============================================================================
+# CHAT SESSIONS (MULTI-TURN MEMORY)
+# =============================================================================
+
+# =============================================================================
+# CHAT SESSIONS (MULTI-TURN MEMORY)
+# =============================================================================
+
+@router.get("/chat/sessions", response_model=list[ChatSessionListItem], tags=["agent"])
+async def get_chat_sessions(
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List conversational chat sessions for the current user."""
+    sessions = await list_chat_sessions(user_id=current_user.id, limit=limit, offset=offset, db=db)
+    return sessions
+
+
+@router.post("/chat/sessions", response_model=ChatSessionDetail, tags=["agent"])
+async def create_new_chat_session(
+    payload: CreateChatSessionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Explicitly create a new chat session."""
+    sess = await create_chat_session(
+        user_id=current_user.id,
+        meeting_id=payload.meeting_id,
+        title=payload.title,
+        db=db,
+    )
+    return sess
+
+
+@router.get("/chat/sessions/{session_id}", response_model=ChatSessionDetail, tags=["agent"])
+async def get_single_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve a specific chat session with its full message history."""
+    sess = await get_chat_session(session_id=session_id, db=db)
+    if not sess:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    if sess.get("user_id") and sess["user_id"] != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to chat session denied")
+    return sess
+
+
+@router.delete("/chat/sessions/{session_id}", tags=["agent"])
+async def remove_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a chat session."""
+    sess = await get_chat_session(session_id=session_id, db=db)
+    if not sess:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    if sess.get("user_id") and sess["user_id"] != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to chat session denied")
+    deleted = await delete_chat_session(session_id=session_id, user_id=current_user.id, db=db)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Failed to delete chat session")
+    return {"ok": True, "message": "Chat session deleted"}
+
+
 @router.post("/query", response_model=AgentQueryResponse, tags=["agent"])
 async def query_agent(
     payload: AgentQueryRequest,
@@ -964,6 +1042,15 @@ async def query_agent(
     if not question:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
 
+    session_id = payload.session_id or str(uuid.uuid4())
+    prior_messages: list[dict] = []
+    if payload.session_id:
+        existing_session = await get_chat_session(payload.session_id, db=db)
+        if existing_session:
+            if existing_session.get("user_id") and existing_session["user_id"] != current_user.id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to chat session denied")
+            prior_messages = existing_session.get("messages") or []
+
     meeting_context, sources = await _build_full_meeting_context(
         db=db,
         question=question,
@@ -972,32 +1059,47 @@ async def query_agent(
     )
 
     if not meeting_context:
-        return AgentQueryResponse(
-            answer="No meetings are available yet in this workspace. Upload and process a recording first.",
+        no_meetings_msg = "No meetings are available yet in this workspace. Upload and process a recording first."
+        await append_chat_session_turn(
+            session_id=session_id,
+            user_message=question,
+            assistant_message=no_meetings_msg,
             sources=[],
+            user_id=current_user.id,
+            meeting_id=payload.meeting_id,
+            db=db,
+        )
+        return AgentQueryResponse(
+            answer=no_meetings_msg,
+            sources=[],
+            session_id=session_id,
         )
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": f"{SYSTEM_CHAT_PROMPT}\n\n=== FULL MEETING CONTEXT ===\n{meeting_context}"}
     ]
-    if payload.history:
+    if prior_messages:
+        for m in prior_messages[-10:]:
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+                messages.append({"role": m["role"], "content": m.get("content", "")})
+    elif payload.history:
         for h in payload.history[-10:]:
             if h.role in ("user", "assistant"):
                 messages.append({"role": h.role, "content": h.content})
 
     messages.append({"role": "user", "content": question})
 
+    answer = None
+
     # 1. Primary: OpenRouter LLM
     if openrouter_client.is_configured:
         try:
             answer = await openrouter_client.chat_completion(messages)
-            if answer:
-                return AgentQueryResponse(answer=answer, sources=sources)
         except Exception as exc:
             logger.warning("OpenRouter chat completion failed: %s", exc)
 
     # 2. Secondary fallback: Groq
-    if settings.groq_api_key:
+    if not answer and settings.groq_api_key:
         try:
             from groq import Groq
             client = Groq(api_key=settings.groq_api_key, timeout=20)
@@ -1009,14 +1111,24 @@ async def query_agent(
                 max_tokens=800,
             )
             answer = completion.choices[0].message.content.strip()
-            if answer:
-                return AgentQueryResponse(answer=answer, sources=sources)
         except Exception as exc:
             logger.warning("Groq fallback query failed: %s", exc)
 
     # 3. Tertiary fallback: Rule-based matcher
-    fallback_ans = _get_fallback_rule_answer(meeting_context, question)
-    return AgentQueryResponse(answer=fallback_ans, sources=sources)
+    if not answer:
+        answer = _get_fallback_rule_answer(meeting_context, question)
+
+    await append_chat_session_turn(
+        session_id=session_id,
+        user_message=question,
+        assistant_message=answer,
+        sources=sources,
+        user_id=current_user.id,
+        meeting_id=payload.meeting_id,
+        db=db,
+    )
+
+    return AgentQueryResponse(answer=answer, sources=sources, session_id=session_id)
 
 
 @router.post("/query/stream", tags=["agent"])
@@ -1029,6 +1141,15 @@ async def query_agent_stream(
     question = payload.question.strip()
     if not question:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
+
+    session_id = payload.session_id or str(uuid.uuid4())
+    prior_messages: list[dict] = []
+    if payload.session_id:
+        existing_session = await get_chat_session(payload.session_id, db=db)
+        if existing_session:
+            if existing_session.get("user_id") and existing_session["user_id"] != current_user.id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to chat session denied")
+            prior_messages = existing_session.get("messages") or []
 
     meeting_context, sources = await _build_full_meeting_context(
         db=db,
@@ -1043,13 +1164,26 @@ async def query_agent_stream(
         async def empty_stream():
             msg = "No meetings are available yet in this workspace. Upload and process a recording first."
             yield f"data: {json.dumps({'chunk': msg})}\n\n"
-            yield f"data: {json.dumps({'done': True, 'sources': []})}\n\n"
+            await append_chat_session_turn(
+                session_id=session_id,
+                user_message=question,
+                assistant_message=msg,
+                sources=[],
+                user_id=current_user.id,
+                meeting_id=payload.meeting_id,
+                db=db,
+            )
+            yield f"data: {json.dumps({'done': True, 'sources': [], 'session_id': session_id})}\n\n"
         return StreamingResponse(empty_stream(), media_type="text/event-stream")
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": f"{SYSTEM_CHAT_PROMPT}\n\n=== FULL MEETING CONTEXT ===\n{meeting_context}"}
     ]
-    if payload.history:
+    if prior_messages:
+        for m in prior_messages[-10:]:
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+                messages.append({"role": m["role"], "content": m.get("content", "")})
+    elif payload.history:
         for h in payload.history[-10:]:
             if h.role in ("user", "assistant"):
                 messages.append({"role": h.role, "content": h.content})
@@ -1058,6 +1192,7 @@ async def query_agent_stream(
 
     async def sse_generator():
         stream_succeeded = False
+        collected_chunks: list[str] = []
 
         # 1. Primary: OpenRouter Streaming
         if openrouter_client.is_configured:
@@ -1065,11 +1200,22 @@ async def query_agent_stream(
                 has_tokens = False
                 async for token in openrouter_client.stream_chat_completion(messages):
                     has_tokens = True
+                    collected_chunks.append(token)
                     yield f"data: {json.dumps({'chunk': token})}\n\n"
 
                 if has_tokens:
                     stream_succeeded = True
-                    yield f"data: {json.dumps({'done': True, 'sources': sources, 'model': openrouter_client.default_model})}\n\n"
+                    full_answer = "".join(collected_chunks)
+                    await append_chat_session_turn(
+                        session_id=session_id,
+                        user_message=question,
+                        assistant_message=full_answer,
+                        sources=sources,
+                        user_id=current_user.id,
+                        meeting_id=payload.meeting_id,
+                        db=db,
+                    )
+                    yield f"data: {json.dumps({'done': True, 'sources': sources, 'model': openrouter_client.default_model, 'session_id': session_id})}\n\n"
                     return
             except Exception as exc:
                 logger.warning("OpenRouter stream failed, attempting fallback: %s", exc)
@@ -1092,10 +1238,21 @@ async def query_agent_stream(
                     delta = chunk.choices[0].delta.content or ""
                     if delta:
                         stream_succeeded = True
+                        collected_chunks.append(delta)
                         yield f"data: {json.dumps({'chunk': delta})}\n\n"
 
                 if stream_succeeded:
-                    yield f"data: {json.dumps({'done': True, 'sources': sources, 'model': settings.llm_fast_model})}\n\n"
+                    full_answer = "".join(collected_chunks)
+                    await append_chat_session_turn(
+                        session_id=session_id,
+                        user_message=question,
+                        assistant_message=full_answer,
+                        sources=sources,
+                        user_id=current_user.id,
+                        meeting_id=payload.meeting_id,
+                        db=db,
+                    )
+                    yield f"data: {json.dumps({'done': True, 'sources': sources, 'model': settings.llm_fast_model, 'session_id': session_id})}\n\n"
                     return
             except Exception as exc:
                 logger.warning("Groq stream fallback failed: %s", exc)
@@ -1105,9 +1262,21 @@ async def query_agent_stream(
         words = fallback_text.split(" ")
         for i, word in enumerate(words):
             space = " " if i > 0 else ""
+            collected_chunks.append(space + word)
             yield f"data: {json.dumps({'chunk': space + word})}\n\n"
             await asyncio.sleep(0.015)
-        yield f"data: {json.dumps({'done': True, 'sources': sources, 'fallback': True})}\n\n"
+
+        full_answer = "".join(collected_chunks)
+        await append_chat_session_turn(
+            session_id=session_id,
+            user_message=question,
+            assistant_message=full_answer,
+            sources=sources,
+            user_id=current_user.id,
+            meeting_id=payload.meeting_id,
+            db=db,
+        )
+        yield f"data: {json.dumps({'done': True, 'sources': sources, 'fallback': True, 'session_id': session_id})}\n\n"
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
 

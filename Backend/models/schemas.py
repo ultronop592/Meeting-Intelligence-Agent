@@ -308,6 +308,7 @@ class AgentQueryRequest(BaseModel):
     """POST /query and POST /query/stream"""
     question: str = Field(..., min_length=1)
     meeting_id: Optional[str] = None
+    session_id: Optional[str] = None
     history: Optional[list[ChatMessage]] = Field(default_factory=list)
 
 
@@ -315,6 +316,45 @@ class AgentQueryResponse(BaseModel):
     """Response from POST /query"""
     answer: str
     sources: list[str] = Field(default_factory=list)
+    session_id: Optional[str] = None
+
+
+class ChatMessageDetail(BaseModel):
+    role: str
+    content: str
+    timestamp: Optional[str] = None
+    sources: Optional[list[str]] = None
+
+
+class ChatSessionListItem(BaseModel):
+    id: str
+    title: str
+    meeting_id: Optional[str] = None
+    meeting_title: Optional[str] = None
+    message_count: int = 0
+    preview: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChatSessionDetail(BaseModel):
+    id: str
+    title: str
+    meeting_id: Optional[str] = None
+    messages: list[ChatMessageDetail] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CreateChatSessionRequest(BaseModel):
+    meeting_id: Optional[str] = None
+    title: Optional[str] = None
 
 
 class MemorySearchRequest(BaseModel):

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import(
 
 from core.config import settings
 from db.models import(
-    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob
+    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob, ChatSession
 )
 from models.schemas import AgentState, EmbeddingStatus
 
@@ -114,6 +114,19 @@ async def init_db() -> None:
             await conn.execute(text("""
                 ALTER TABLE participants
                 ADD COLUMN IF NOT EXISTS speaker_label VARCHAR
+            """))
+
+            # --- chat_sessions table ---
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id VARCHAR PRIMARY KEY,
+                    user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE,
+                    meeting_id VARCHAR REFERENCES meetings(id) ON DELETE SET NULL,
+                    title VARCHAR NOT NULL DEFAULT 'New Conversation',
+                    messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
             """))
 
     logger.info("Database tables verified / created.")
@@ -391,4 +404,176 @@ async def recover_stale_jobs() -> int:
             logger.error("Failed to recover stale jobs: %s", exc)
             await session.rollback()
             return 0
+
+
+# =============================================================================
+# CHAT SESSIONS — Multi-Turn Conversational Memory Persistence
+# =============================================================================
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def _get_context_session(db: AsyncSession | None = None):
+    if db is not None:
+        yield db
+    else:
+        async with AsyncSessionLocal() as session:
+            yield session
+
+
+async def create_chat_session(
+    user_id: str,
+    meeting_id: str | None = None,
+    title: str | None = None,
+    db: AsyncSession | None = None,
+) -> dict:
+    """Create a new ChatSession record in the DB and return its dict."""
+    async with _get_context_session(db) as session:
+        new_session = ChatSession(
+            user_id=user_id,
+            meeting_id=meeting_id,
+            title=title or "New Conversation",
+            messages=[],
+        )
+        session.add(new_session)
+        await session.commit()
+        await session.refresh(new_session)
+        return {
+            "id": new_session.id,
+            "title": new_session.title,
+            "meeting_id": new_session.meeting_id,
+            "messages": new_session.messages or [],
+            "created_at": new_session.created_at,
+            "updated_at": new_session.updated_at,
+        }
+
+
+async def get_chat_session(
+    session_id: str,
+    user_id: str | None = None,
+    db: AsyncSession | None = None,
+) -> dict | None:
+    """Get a ChatSession record by id (with optional user ownership verification)."""
+    async with _get_context_session(db) as session:
+        chat_sess = await session.get(ChatSession, session_id)
+        if not chat_sess:
+            return None
+        if user_id and chat_sess.user_id and chat_sess.user_id != user_id:
+            return None
+        return {
+            "id": chat_sess.id,
+            "user_id": chat_sess.user_id,
+            "title": chat_sess.title,
+            "meeting_id": chat_sess.meeting_id,
+            "messages": chat_sess.messages or [],
+            "created_at": chat_sess.created_at,
+            "updated_at": chat_sess.updated_at,
+        }
+
+
+async def list_chat_sessions(
+    user_id: str,
+    limit: int = 30,
+    offset: int = 0,
+    db: AsyncSession | None = None,
+) -> list[dict]:
+    """List chat sessions for a user, sorted by updated_at descending, with meeting titles."""
+    from sqlalchemy import select
+    async with _get_context_session(db) as session:
+        stmt = (
+            select(ChatSession, Meeting.title.label("meeting_title"))
+            .outerjoin(Meeting, Meeting.id == ChatSession.meeting_id)
+            .where((ChatSession.user_id == user_id) | (ChatSession.user_id.is_(None)))
+            .order_by(ChatSession.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = (await session.execute(stmt)).all()
+        results = []
+        for sess, meeting_title in rows:
+            msgs = sess.messages or []
+            last_msg = msgs[-1]["content"] if msgs and "content" in msgs[-1] else None
+            preview = (last_msg[:90] + "...") if last_msg and len(last_msg) > 90 else last_msg
+            results.append({
+                "id": sess.id,
+                "title": sess.title,
+                "meeting_id": sess.meeting_id,
+                "meeting_title": meeting_title,
+                "message_count": len(msgs),
+                "preview": preview,
+                "created_at": sess.created_at,
+                "updated_at": sess.updated_at,
+            })
+        return results
+
+
+async def append_chat_session_turn(
+    session_id: str,
+    user_message: str,
+    assistant_message: str,
+    sources: list[str] | None = None,
+    user_id: str | None = None,
+    meeting_id: str | None = None,
+    db: AsyncSession | None = None,
+) -> str:
+    """Appends user and assistant messages to a ChatSession. Creates session if not existing."""
+    from datetime import datetime, timezone
+    async with _get_context_session(db) as session:
+        chat_sess = await session.get(ChatSession, session_id)
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        if not chat_sess:
+            title = user_message.strip()[:40]
+            if len(user_message.strip()) > 40:
+                title += "..."
+            chat_sess = ChatSession(
+                id=session_id,
+                user_id=user_id,
+                meeting_id=meeting_id,
+                title=title or "New Conversation",
+                messages=[],
+            )
+            session.add(chat_sess)
+
+        current_messages = list(chat_sess.messages or [])
+        current_messages.append({
+            "role": "user",
+            "content": user_message,
+            "timestamp": now_str,
+        })
+        current_messages.append({
+            "role": "assistant",
+            "content": assistant_message,
+            "timestamp": now_str,
+            "sources": sources or [],
+        })
+        chat_sess.messages = current_messages
+        if chat_sess.title == "New Conversation" and user_message:
+            title = user_message.strip()[:40]
+            if len(user_message.strip()) > 40:
+                title += "..."
+            chat_sess.title = title
+        if meeting_id and not chat_sess.meeting_id:
+            chat_sess.meeting_id = meeting_id
+
+        chat_sess.updated_at = datetime.now(timezone.utc)
+        await session.commit()
+        return chat_sess.id
+
+
+async def delete_chat_session(
+    session_id: str,
+    user_id: str,
+    db: AsyncSession | None = None,
+) -> bool:
+    """Delete a chat session, verifying user ownership."""
+    async with _get_context_session(db) as session:
+        chat_sess = await session.get(ChatSession, session_id)
+        if not chat_sess:
+            return False
+        if chat_sess.user_id and chat_sess.user_id != user_id:
+            return False
+        await session.delete(chat_sess)
+        await session.commit()
+        return True
 
