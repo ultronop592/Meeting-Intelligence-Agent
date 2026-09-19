@@ -1,0 +1,71 @@
+services:
+  # =============================================================================
+  # Backend API Gateway & Agentic Engine (FastAPI + LangGraph + ReportLab)
+  # =============================================================================
+  - type: web
+    name: meeting-intelligence-backend
+    runtime: docker
+    rootDir: Backend
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_SYNC
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPERNROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.3-70b-instruct
+      - key: CORS_ORIGINS
+        sync: false
+      - key: JIRA_URL
+        sync: false
+      - key: JIRA_EMAIL
+        sync: false
+      - key: JIRA_API_TOKEN
+        sync: false
+      - key: JIRA_PROJECT_KEY
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDER_EMAIL
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        sync: false
+      - key: GOOGLE_CALENDAR_CREDENTIALS_JSON
+        sync: false
+      - key: DIARIZATION_ENABLED
+        value: "false"
+
+  # =============================================================================
+  # Frontend Client Interface (Next.js App Router)
+  # =============================================================================
+  - type: web
+    name: meeting-intelligence-frontend
+    runtime: node
+    rootDir: frontend
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        fromService:
+          type: web
+          name: meeting-intelligence-backend
+          property: host
