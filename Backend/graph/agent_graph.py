@@ -30,13 +30,90 @@ def route_after_summary(state: AgentState) -> str:
     return "save_to_database" if state.summary else "end"
 
 
+from core.ws_manager import ws_manager
+
+def _make_tracked_node(node_name: str, node_fn):
+    if asyncio.iscoroutinefunction(node_fn):
+        async def _async_tracked_node(state: AgentState) -> dict | AgentState:
+            t0 = time.time()
+            if state.job_id:
+                try:
+                    await ws_manager.broadcast(state.job_id, {
+                        "event": "node_started",
+                        "node": node_name,
+                        "job_id": state.job_id,
+                        "completed_nodes": list(state.completed_nodes or []),
+                    })
+                except Exception:
+                    pass
+            res = await node_fn(state)
+            duration = round((time.time() - t0) * 1000)
+            completed = list(state.completed_nodes or [])
+            if node_name not in completed:
+                completed.append(node_name)
+            if state.job_id:
+                try:
+                    await ws_manager.broadcast(state.job_id, {
+                        "event": "node_completed",
+                        "node": node_name,
+                        "job_id": state.job_id,
+                        "completed_nodes": completed,
+                        "elapsed_ms": duration,
+                    })
+                except Exception:
+                    pass
+            return res
+        return _async_tracked_node
+    else:
+        def _sync_tracked_node(state: AgentState) -> dict | AgentState:
+            t0 = time.time()
+            if state.job_id:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            ws_manager.broadcast(state.job_id, {
+                                "event": "node_started",
+                                "node": node_name,
+                                "job_id": state.job_id,
+                                "completed_nodes": list(state.completed_nodes or []),
+                            }),
+                            loop,
+                        )
+                except Exception:
+                    pass
+            res = node_fn(state)
+            duration = round((time.time() - t0) * 1000)
+            completed = list(state.completed_nodes or [])
+            if node_name not in completed:
+                completed.append(node_name)
+            if state.job_id:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            ws_manager.broadcast(state.job_id, {
+                                "event": "node_completed",
+                                "node": node_name,
+                                "job_id": state.job_id,
+                                "completed_nodes": completed,
+                                "elapsed_ms": duration,
+                            }),
+                            loop,
+                        )
+                except Exception:
+                    pass
+            return res
+        return _sync_tracked_node
+
+
 def build_agent_graph():
     graph = StateGraph(AgentState)
 
-    graph.add_node("transcribe_audio", transcribe_audio)
-    graph.add_node("extract_information", extract_information)
-    graph.add_node("generate_summary", generate_summary)
-    graph.add_node("save_to_database", save_to_database)
+    graph.add_node("transcribe_audio", _make_tracked_node("transcribe_audio", transcribe_audio))
+    graph.add_node("extract_information", _make_tracked_node("extract_information", extract_information))
+    graph.add_node("generate_summary", _make_tracked_node("generate_summary", generate_summary))
+    graph.add_node("save_to_database", _make_tracked_node("save_to_database", save_to_database))
 
     graph.set_entry_point("transcribe_audio")
 
@@ -64,7 +141,12 @@ agent_graph = build_agent_graph()
 
 
 @traceable(name="arun_meeting_agent", tags=["full-pipeline", "langgraph"], metadata={"nodes": 4})
-async def arun_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | None = None) -> AgentState:
+async def arun_meeting_agent(
+    audio_file_path: str,
+    audio_filename: str,
+    user_id: str | None = None,
+    job_id: str | None = None,
+) -> AgentState:
     """Asynchronously execute the 4-stage multi-agent meeting pipeline.
 
     Stages:
@@ -81,9 +163,10 @@ async def arun_meeting_agent(audio_file_path: str, audio_filename: str, user_id:
         audio_file_path=audio_file_path,
         audio_filename=audio_filename,
         user_id=user_id,
+        job_id=job_id,
     )
     try:
-        logger.info("Pipeline execution started for '%s' (User: %s)", audio_filename, user_id or "anonymous")
+        logger.info("Pipeline execution started for '%s' (User: %s, Job: %s)", audio_filename, user_id or "anonymous", job_id or "none")
         final_state_dict: dict[str, Any] = await agent_graph.ainvoke(initial_state)
         result = AgentState(**final_state_dict)
 

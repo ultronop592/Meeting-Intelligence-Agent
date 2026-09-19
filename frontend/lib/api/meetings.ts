@@ -16,6 +16,9 @@ import type {
   UploadResponse,
   AgentQueryRequest,
   AgentQueryResponse,
+  ChatSessionListItem,
+  ChatSessionDetail,
+  CreateChatSessionRequest,
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
@@ -192,7 +195,7 @@ export const meetingApi = {
   queryAgentStream: async (
     payload: AgentQueryRequest,
     onChunk: (chunk: string) => void,
-    onDone?: (sources: string[]) => void,
+    onDone?: (sources: string[], sessionId?: string) => void,
     signal?: AbortSignal
   ): Promise<void> => {
     const token = getAuthToken();
@@ -247,8 +250,8 @@ export const meetingApi = {
             if (data.chunk) {
               onChunk(data.chunk);
             }
-            if (data.done && onDone && data.sources) {
-              onDone(data.sources);
+            if (data.done && onDone) {
+              onDone(data.sources || [], data.session_id);
             }
           } catch {
             // ignore partial JSON parse errors
@@ -264,14 +267,31 @@ export const meetingApi = {
         if (data.chunk) {
           onChunk(data.chunk);
         }
-        if (data.done && onDone && data.sources) {
-          onDone(data.sources);
+        if (data.done && onDone) {
+          onDone(data.sources || [], data.session_id);
         }
       } catch {
         // ignore
       }
     }
   },
+
+  listChatSessions: (limit = 30, offset = 0) =>
+    apiRequest<ChatSessionListItem[]>(`/chat/sessions?limit=${limit}&offset=${offset}`),
+
+  createChatSession: (payload: CreateChatSessionRequest = {}) =>
+    apiRequest<ChatSessionDetail>("/chat/sessions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getChatSession: (sessionId: string) =>
+    apiRequest<ChatSessionDetail>(`/chat/sessions/${sessionId}`),
+
+  deleteChatSession: (sessionId: string) =>
+    apiRequest<{ ok: boolean; message: string }>(`/chat/sessions/${sessionId}`, {
+      method: "DELETE",
+    }),
 
   searchGlobal: (query: string, mode: "fulltext" | "semantic" = "fulltext") =>
     apiRequest<GlobalSearchResult>(`/search?q=${encodeURIComponent(query)}&mode=${mode}`),

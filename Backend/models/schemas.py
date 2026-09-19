@@ -110,7 +110,8 @@ class AgentState(BaseModel):
     audio_file_path: Optional[str] = None
     audio_filename:  Optional[str] = None
     user_id:         Optional[str] = None
- 
+    job_id:          Optional[str] = None
+
     # --- Node outputs --------------------------------------------------------
     transcript:           Optional[str]              = None
     # Speaker-labelled version of the transcript, e.g.:

@@ -146,13 +146,47 @@ export type ChatMessage = {
 export type AgentQueryRequest = {
   question: string;
   meeting_id?: string | null;
+  session_id?: string | null;
   history?: ChatMessage[];
 };
 
 export type AgentQueryResponse = {
   answer: string;
   sources?: string[];
+  session_id?: string | null;
   [key: string]: unknown;
+};
+
+export type ChatMessageDetail = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp?: string | null;
+  sources?: string[] | null;
+};
+
+export type ChatSessionListItem = {
+  id: string;
+  title: string;
+  meeting_id?: string | null;
+  meeting_title?: string | null;
+  message_count: number;
+  preview?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ChatSessionDetail = {
+  id: string;
+  title: string;
+  meeting_id?: string | null;
+  messages: ChatMessageDetail[];
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type CreateChatSessionRequest = {
+  meeting_id?: string | null;
+  title?: string | null;
 };
 
 export type PeriodStats = {

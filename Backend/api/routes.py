@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current_user
 from core.limiter import limiter
 from core.config import settings
+from core.ws_manager import ws_manager
 from db.database import (
     AsyncSessionLocal,
     append_chat_session_turn,

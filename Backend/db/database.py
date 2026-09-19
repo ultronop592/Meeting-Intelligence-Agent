@@ -330,6 +330,23 @@ async def update_processing_job(job_id: str, **kwargs) -> None:
                 if hasattr(job, key):
                     setattr(job, key, value)
             await session.commit()
+
+            # Broadcast update to connected WebSocket clients
+            try:
+                from core.ws_manager import ws_manager
+                await ws_manager.broadcast(job_id, {
+                    "event": "job_status_updated",
+                    "job_id": job_id,
+                    "status": job.status,
+                    "completed_nodes": job.completed_nodes or [],
+                    "errors": job.errors or [],
+                    "meeting_id": job.meeting_id,
+                    "duration_ms": job.duration_ms,
+                    "title": job.title,
+                    "short_summary": job.short_summary,
+                })
+            except Exception as ws_err:
+                logger.debug("WebSocket broadcast failed for job %s: %s", job_id, ws_err)
         except Exception as e:
             logger.error("Failed to update processing job %s: %s", job_id, e)
             await session.rollback()
