@@ -19,16 +19,16 @@ logger = logging.getLogger(__name__)
 
 
 def _normalized_async_database_url(url: str) -> str:
-    """Translate URL parameters that asyncpg does not accept directly."""
-    if url.startswith("postgresql+asyncpg://") and "sslmode=require" in url:
-        return url.replace("sslmode=require", "ssl=require")
+    """Strips query parameters from asyncpg URLs so connect_args can handle SSL cleanly."""
+    if url.startswith("postgresql+asyncpg://"):
+        return url.split("?")[0]
     return url
- 
- 
+
+
 # =============================================================================
 # DATABASE ENGINE
 # =============================================================================
- 
+
 # create_async_engine builds the connection pool to Neon.
 # pool_size=5    — keep 5 connections open (reuse across requests)
 # max_overflow=10 — allow up to 10 extra connections under load
@@ -41,6 +41,10 @@ if settings.database_url.startswith("sqlite+"):
 else:
     engine = create_async_engine(
         _normalized_async_database_url(settings.database_url),
+        connect_args={
+            "ssl": "require",
+            "statement_cache_size": 0,  # Required for Neon PgBouncer transaction pooler
+        },
         pool_size=5,
         max_overflow=10,
         pool_pre_ping=True,
