@@ -68,17 +68,17 @@ Frontend: jwt-decode
 
 ---
 
-### ⚡ Phase 2 — Real-Time Pipeline Progress via WebSockets (High Priority)
+### ⚡ Phase 2 — Real-Time Pipeline Progress via WebSockets (Completed ✅)
 
 **Why**: The current frontend polling model creates unnecessary DB load and slow perceived performance. Users stare at a blank spinner.
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 2.1 | Add `WebSocket` connection manager class | `core/ws_manager.py` *(NEW)* |
-| 2.2 | Add `GET /meetings/ws/{job_id}` WebSocket endpoint for live pipeline events | `api/routes.py` |
-| 2.3 | Push node completion events from agent graph to connected WebSocket clients | `graph/agent_graph.py`, `db/database.py` |
-| 2.4 | Replace frontend polling hook (`use-job-status.ts`) with WebSocket listener | `frontend/lib/hooks/use-job-status.ts` |
-| 2.5 | Animated node-by-node progress stepper UI component | `frontend/components/processing/pipeline-tracker.tsx` *(NEW)* |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 2.1 | Add `WebSocket` connection manager class | `core/ws_manager.py` | ✅ Complete |
+| 2.2 | Add `GET /meetings/ws/{job_id}` WebSocket endpoint for live pipeline events | `api/routes.py` | ✅ Complete |
+| 2.3 | Push node completion events from agent graph to connected WebSocket clients | `graph/agent_graph.py`, `db/database.py` | ✅ Complete |
+| 2.4 | Replace frontend polling hook (`use-job-status.ts`) with WebSocket listener | `frontend/lib/hooks/use-job-status.ts` | ✅ Complete |
+| 2.5 | Animated node-by-node progress stepper UI component | `frontend/components/processing/pipeline-tracker.tsx` | ✅ Complete |
 
 **WebSocket Event Format:**
 ```json
@@ -93,67 +93,67 @@ Frontend: jwt-decode
 
 ---
 
-### 💬 Phase 3 — Multi-Turn Conversational Memory in Agent Chat (High Priority)
+### 💬 Phase 3 — Multi-Turn Conversational Memory in Agent Chat (Completed ✅)
 
 **Why**: The current Q&A chat is stateless — each message is independently context-less. The agent cannot answer follow-up questions like *"tell me more about the second decision"*.
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 3.1 | Add `ChatSession` table in DB (`id`, `meeting_id`, `user_id`, `messages JSON`, `created_at`) | `db/models.py` |
-| 3.2 | Extend `AgentQueryRequest` with `session_id?: string` | `models/schemas.py` |
-| 3.3 | Maintain rolling chat history in `POST /query` + `POST /query/stream` | `api/routes.py` |
-| 3.4 | Trim history to last `N` turns to avoid context overflow | `api/routes.py` |
-| 3.5 | Persist conversation to DB on each exchange | `db/database.py` |
-| 3.6 | Frontend chat history persistence across page refreshes | `frontend/lib/hooks/use-agent-chat.ts` |
-| 3.7 | Suggested quick-questions panel (contextual chips like "Who owns this action?" / "Summarize decisions") | `frontend/components/chat/chat-suggestions.tsx` *(NEW)* |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 3.1 | Add `ChatSession` table in DB (`id`, `meeting_id`, `user_id`, `messages JSON`, `created_at`) | `db/models.py` | ✅ Complete |
+| 3.2 | Extend `AgentQueryRequest` with `session_id?: string` | `models/schemas.py`, `frontend/types/api.ts` | ✅ Complete |
+| 3.3 | Maintain rolling chat history in `POST /query` + `POST /query/stream` | `api/routes.py` | ✅ Complete |
+| 3.4 | Trim history to last `N` turns to avoid context overflow | `api/routes.py` | ✅ Complete |
+| 3.5 | Persist conversation to DB on each exchange | `db/database.py` | ✅ Complete |
+| 3.6 | Frontend chat history persistence across page refreshes | `frontend/lib/hooks/use-agent-chat.ts`, `frontend/app/(app)/agent-chat/page.tsx` | ✅ Complete |
+| 3.7 | Suggested quick-questions panel (contextual chips like "Who owns this action?" / "Summarize decisions") | `frontend/components/chat/chat-suggestions.tsx` | ✅ Complete |
 
 ---
 
-### 📊 Phase 4 — Analytics Dashboard (Medium Priority)
+### 📊 Phase 4 — Analytics Dashboard (Completed ✅)
 
 **Why**: Currently the analytics page is empty. Cross-meeting insights would make the product genuinely valuable for teams.
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 4.1 | `GET /analytics/summary` endpoint: total meetings, avg duration, total action items, completion rate | `api/routes.py` |
-| 4.2 | `GET /analytics/participants` — leaderboard of most active participants + action item load | `api/routes.py` |
-| 4.3 | `GET /analytics/timeline` — meeting frequency over time (weekly/monthly) | `api/routes.py` |
-| 4.4 | `GET /analytics/action-items` — open/done/overdue breakdown by owner | `api/routes.py` |
-| 4.5 | Action item completion trend chart (line chart per week) | `frontend/app/(app)/analytics/page.tsx` |
-| 4.6 | Participant activity breakdown (bar chart) | `frontend/app/(app)/analytics/page.tsx` |
-| 4.7 | Top recurring topics / keywords extracted from all meetings | `api/routes.py`, memory_service extension |
-| 4.8 | Meeting statistics header cards (7-day, 30-day stats) | `frontend/components/analytics/` *(NEW)* |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 4.1 | `GET /analytics/summary` endpoint: total meetings, avg duration, total action items, completion rate | `api/routes.py` | ✅ Complete |
+| 4.2 | `GET /analytics/participants` — leaderboard of most active participants + action item load | `api/routes.py` | ✅ Complete |
+| 4.3 | `GET /analytics/timeline` — meeting frequency over time (weekly/monthly) | `api/routes.py` | ✅ Complete |
+| 4.4 | `GET /analytics/action-items` — open/done/overdue breakdown by owner | `api/routes.py` | ✅ Complete |
+| 4.5 | Action item completion trend chart (line chart per week) | `frontend/app/(app)/analytics/page.tsx` | ✅ Complete |
+| 4.6 | Participant activity breakdown (bar chart) | `frontend/app/(app)/analytics/page.tsx` | ✅ Complete |
+| 4.7 | Top recurring topics / keywords extracted from all meetings | `api/routes.py`, `frontend/components/analytics/` | ✅ Complete |
+| 4.8 | Meeting statistics header cards (7-day, 30-day stats) | `frontend/components/analytics/` | ✅ Complete |
 
 **Recommended chart library**: `recharts` (already React-compatible, 0 config)
 
 ---
 
-### 🔍 Phase 5 — Global Search, Speaker Identity & Observability (Medium Priority)
+### 🔍 Phase 5 — Global Search, Speaker Identity & Observability (Completed ✅)
 
 #### 5A — Global Full-Text Search
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 5A.1 | `GET /search?q=` endpoint using Postgres `tsvector` full-text search on meetings + action items + decisions | `api/routes.py` |
-| 5A.2 | Frontend global search bar (currently visual-only) — wire to real API | `frontend/components/layout/` |
-| 5A.3 | Search results page with highlighted excerpts | `frontend/app/(app)/search/` *(NEW)* |
-| 5A.4 | Semantic search toggle — run against `/memory/search` for semantic mode vs full-text | `frontend/app/(app)/search/` |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 5A.1 | `GET /search?q=` endpoint using Postgres `tsvector` full-text search on meetings + action items + decisions | `api/routes.py` | ✅ Complete |
+| 5A.2 | Frontend global search bar (currently visual-only) — wire to real API | `frontend/components/layout/` | ✅ Complete |
+| 5A.3 | Search results page with highlighted excerpts | `frontend/app/(app)/search/` | ✅ Complete |
+| 5A.4 | Semantic search toggle — run against `/memory/search` for semantic mode vs full-text | `frontend/app/(app)/search/` | ✅ Complete |
 
 #### 5B — Speaker Identity Resolution
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 5B.1 | Add speaker name mapping to participant record (`speaker_label` field) | `db/models.py` |
-| 5B.2 | UI to map `SPEAKER_00` → "Alice Chen" on meeting detail page | `frontend/app/(app)/meetings/[id]/page.tsx` |
-| 5B.3 | Retroactively rewrite diarized transcript with resolved names on save | `db/database.py` |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 5B.1 | Add speaker name mapping to participant record (`speaker_label` field) | `db/models.py` | ✅ Complete |
+| 5B.2 | UI to map `SPEAKER_00` → "Alice Chen" on meeting detail page | `frontend/app/(app)/meetings/[id]/page.tsx` | ✅ Complete |
+| 5B.3 | Retroactively rewrite diarized transcript with resolved names on save | `db/database.py`, `api/routes.py` | ✅ Complete |
 
 #### 5C — Error Tracking & Observability
 
-| # | Task | Files Affected |
-|---|------|----------------|
-| 5C.1 | Integrate Sentry (`sentry-sdk`) for backend exception capture | `api/main.py`, `requirements.txt` |
-| 5C.2 | Add pipeline latency tracking: report node timing breakdowns to LangSmith | `graph/agent_graph.py` |
-| 5C.3 | Health check extension: report DB connectivity, Groq API reachability | `api/routes.py` |
+| # | Task | Files Affected | Status |
+|---|------|----------------|--------|
+| 5C.1 | Integrate Sentry (`sentry-sdk`) for backend exception capture | `api/main.py`, `requirements.txt` | ✅ Complete |
+| 5C.2 | Add pipeline latency tracking: report node timing breakdowns to LangSmith | `graph/agent_graph.py` | ✅ Complete |
+| 5C.3 | Health check extension: report DB connectivity, Groq API reachability | `api/routes.py` | ✅ Complete |
 
 ---
 

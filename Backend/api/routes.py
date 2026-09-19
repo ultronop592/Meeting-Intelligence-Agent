@@ -174,7 +174,8 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
         state = await arun_meeting_agent(
             payload.audio_file_path,
             payload.audio_filename,
-            user_id,
+            user_id=user_id,
+            job_id=job_id,
         )
 
         completed_nodes = ["upload"] + (state.completed_nodes or [])
@@ -272,6 +273,34 @@ async def get_processing_status(job_id: str, current_user: User = Depends(get_cu
             detail="You do not have permission to view this job status.",
         )
     return job
+
+
+@router.websocket("/meetings/ws/{job_id}")
+async def meeting_ws_progress(websocket: WebSocket, job_id: str):
+    """Real-time pipeline progress events over WebSocket with fallback keepalive."""
+    await ws_manager.connect(job_id, websocket)
+    try:
+        current_job = await get_processing_job(job_id)
+        if current_job:
+            await websocket.send_json({
+                "event": "initial_state",
+                "job_id": job_id,
+                **current_job,
+            })
+
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=25.0)
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                await websocket.send_json({"event": "ping", "job_id": job_id})
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected for job %s", job_id)
+    except Exception as exc:
+        logger.debug("WebSocket error for job %s: %s", job_id, exc)
+    finally:
+        await ws_manager.disconnect(job_id, websocket)
 
 
 # =============================================================================
