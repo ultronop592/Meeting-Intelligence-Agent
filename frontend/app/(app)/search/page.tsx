@@ -196,23 +196,37 @@ function SearchContent() {
           {(activeTab === "all" || activeTab === "meetings") && results.meetings.length > 0 && (
             <div className="space-y-3">
               {activeTab === "all" && (
-                <h3 className="text-xs font-bold uppercase tracking-wider text-text-tertiary">Meetings</h3>
+                <div className="flex items-center justify-between mt-2 mb-1">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-text-tertiary">Meetings</h3>
+                  {results.mode === "semantic" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-accent font-medium bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-md">
+                      <Sparkles className="h-3 w-3" /> Vector Memory Rank
+                    </span>
+                  )}
+                </div>
               )}
               {results.meetings.map((m: GlobalSearchMeetingResult) => (
-                <Card key={m.id} className="p-4 transition hover:border-accent/50 hover:bg-surface-2/40">
+                <Card key={m.id} className="p-4 transition-all hover:border-accent/40 hover:bg-surface-2/50 border border-border/70 bg-surface shadow-2xs">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <Link href={`/meetings/${m.id}`} className="font-semibold text-foreground hover:text-accent flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-accent" />
-                        {m.title}
-                      </Link>
-                      <p className="text-xs text-text-secondary line-clamp-2">{m.snippet}</p>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/meetings/${m.id}`} className="font-semibold text-foreground hover:text-accent flex items-center gap-2 truncate">
+                          <FileText className="h-4 w-4 text-accent shrink-0" />
+                          <span className="truncate">{m.title}</span>
+                        </Link>
+                        {m.created_at && (
+                          <span className="text-[11px] text-text-tertiary shrink-0">
+                            {new Date(m.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">{m.snippet}</p>
                     </div>
                     <Link
                       href={`/meetings/${m.id}`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline shrink-0"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline shrink-0 pt-0.5"
                     >
-                      View <ArrowRight className="h-3.3 w-3.3" />
+                      View <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>
                 </Card>

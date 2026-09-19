@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bot, User, Copy, Check } from "lucide-react";
+import { Bot, User, Copy, Check, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ChatRole = "user" | "assistant";
@@ -252,18 +252,36 @@ export function ChatBubble({ role, message, timestamp, isStreaming, sources }: C
 
         {/* Sources / Citations */}
         {!isUser && sources && sources.length > 0 && !isStreaming ? (
-          <div className="mt-1.5 flex flex-wrap gap-1.5 px-1">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1">
             <span className="text-[10px] font-semibold tracking-wide uppercase text-text-tertiary">
               Sources:
             </span>
-            {sources.map((src, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
-              >
-                {src}
-              </span>
-            ))}
+            {sources.map((src, i) => {
+              const parts = src.split(":");
+              const type = parts[0];
+              const meetingId = parts[1];
+              const title = parts.slice(2).join(":") || (type === "memory" ? "Cross-Meeting Memory" : "Meeting Context");
+              const isMeeting = (type === "meeting" || type === "memory") && meetingId && meetingId.length > 5;
+
+              return isMeeting ? (
+                <a
+                  key={i}
+                  href={`/meetings/${meetingId}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent hover:bg-accent/15 transition-all shadow-2xs"
+                  title={`Open meeting: ${title}`}
+                >
+                  <Sparkles className="h-2.5 w-2.5" />
+                  <span className="truncate max-w-[190px]">{title}</span>
+                </a>
+              ) : (
+                <span
+                  key={i}
+                  className="inline-flex items-center rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
+                >
+                  {src}
+                </span>
+              );
+            })}
           </div>
         ) : null}
 

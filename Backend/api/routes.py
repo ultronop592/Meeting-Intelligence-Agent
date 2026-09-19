@@ -879,14 +879,58 @@ async def _build_full_meeting_context(
     """Build comprehensive context from the meeting record, full transcript, actions, decisions, and memory."""
     target_meeting: Meeting | None = None
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None)) if current_user else True
+    target_meeting: Meeting | None = None
+    mem_matches: list[dict] = []
+    sources: list[str] = []
+
+    from core.memory_service import memory_service
 
     if meeting_id:
         target_meeting = await db.get(Meeting, meeting_id)
         if target_meeting and current_user and target_meeting.user_id and target_meeting.user_id != current_user.id:
             target_meeting = None
+        if target_meeting:
+            sources.append(f"meeting:{target_meeting.id}:{target_meeting.title}")
+            # Cross-meeting recall for scoped meeting
+            try:
+                mem_matches = await memory_service.search_memory(
+                    db,
+                    question,
+                    top_k=2,
+                    exclude_meeting_id=target_meeting.id,
+                    user_id=current_user.id if current_user else None,
+                )
+                for mm in mem_matches:
+                    sources.append(f"memory:{mm['meeting_id']}:{mm['title']}")
+            except Exception as mem_exc:
+                logger.debug("Memory search error: %s", mem_exc)
     else:
-        stmt = select(Meeting).where(user_filter).order_by(Meeting.created_at.desc()).limit(1)
-        target_meeting = (await db.execute(stmt)).scalars().first()
+        # Global Cross-Meeting Mode: dynamically search vector memory across all meetings
+        try:
+            mem_matches = await memory_service.search_memory(
+                db,
+                question,
+                top_k=4,
+                user_id=current_user.id if current_user else None,
+            )
+        except Exception as mem_exc:
+            logger.debug("Global memory search error: %s", mem_exc)
+            mem_matches = []
+
+        if mem_matches:
+            # Primary meeting is the top semantic match
+            top_id = mem_matches[0]["meeting_id"]
+            target_meeting = await db.get(Meeting, top_id)
+            for mm in mem_matches:
+                sources.append(f"meeting:{mm['meeting_id']}:{mm['title']}")
+            # Remaining matches become secondary cross-meeting context
+            mem_matches = mem_matches[1:]
+        else:
+            # Fallback to the most recent meeting if no semantic match
+            stmt = select(Meeting).where(user_filter).order_by(Meeting.created_at.desc()).limit(1)
+            target_meeting = (await db.execute(stmt)).scalars().first()
+            if target_meeting:
+                sources.append(f"meeting:{target_meeting.id}:{target_meeting.title}")
 
     if not target_meeting:
         return "", []
@@ -910,9 +954,9 @@ async def _build_full_meeting_context(
     ).scalars().all()
 
     context_sections: list[str] = [
-        f"MEETING TITLE: {target_meeting.title}",
-        f"MEETING DURATION: {target_meeting.duration_minutes} minutes" if target_meeting.duration_minutes else "MEETING DURATION: Not recorded",
+        f"PRIMARY RELEVANT MEETING: {target_meeting.title}",
         f"RECORDED AT: {target_meeting.created_at.isoformat() if target_meeting.created_at else 'Unknown'}",
+        f"DURATION: {target_meeting.duration_minutes} minutes" if target_meeting.duration_minutes else "DURATION: Not recorded",
     ]
 
     if target_meeting.short_summary:
@@ -928,8 +972,6 @@ async def _build_full_meeting_context(
             email = f" <{p.email}>" if p.email else ""
             part_lines.append(f"- {p.name}{label}{email}")
         context_sections.append("PARTICIPANTS & SPEAKERS:\n" + "\n".join(part_lines))
-    else:
-        context_sections.append("PARTICIPANTS: None identified")
 
     if action_items:
         items_lines = [
@@ -937,47 +979,35 @@ async def _build_full_meeting_context(
             for item in action_items
         ]
         context_sections.append("ACTION ITEMS & ASSIGNMENTS:\n" + "\n".join(items_lines))
-    else:
-        context_sections.append("ACTION ITEMS: None extracted")
 
     if decisions:
         dec_lines = [
-            f"- {d.description} (Rationale/Context: {d.context})" if d.context else f"- {d.description}"
+            f"- {d.description} (Context: {d.context})" if d.context else f"- {d.description}"
             for d in decisions
         ]
         context_sections.append("KEY DECISIONS MADE:\n" + "\n".join(dec_lines))
-    else:
-        context_sections.append("KEY DECISIONS: None recorded")
 
     # Complete Transcript (diarized speaker transcript preferred)
     transcript_text = getattr(target_meeting, "diarized_transcript", None) or getattr(target_meeting, "transcript", None)
     if transcript_text:
-        # Full transcript provided to model (up to 60,000 characters, easily accommodated by 128k context)
         context_sections.append(f"VERBATIM MEETING DIALOGUE TRANSCRIPT:\n{transcript_text[:60000]}")
 
-    # Cross-Meeting RAG Search for workspace-wide contextual intelligence
-    try:
-        from core.memory_service import memory_service
-        mem_matches = await memory_service.search_memory(
-            db,
-            question,
-            top_k=2,
-            exclude_meeting_id=target_meeting.id,
-            user_id=current_user.id if current_user else None,
-        )
-        if mem_matches:
-            mem_block = ["HISTORICAL CROSS-MEETING INTELLIGENCE:"]
-            for m_match in mem_matches:
-                mem_block.append(f"- Past Meeting: \"{m_match['title']}\" ({m_match['date']}) | Summary: {m_match['short_summary']}")
-                if m_match.get("action_items"):
-                    items_str = "; ".join(f"{i['description']} (owner: {i['owner']})" for i in m_match["action_items"][:3])
-                    mem_block.append(f"  Related Action Items: {items_str}")
-            context_sections.append("\n".join(mem_block))
-    except Exception as mem_exc:
-        logger.debug("Memory RAG lookup: %s", mem_exc)
+    # Cross-Meeting RAG Context
+    if mem_matches:
+        mem_block = ["=== RELEVANT CROSS-MEETING MEMORY & HISTORICAL INTELLIGENCE ==="]
+        for m_match in mem_matches:
+            mem_block.append(f"\n[Past Meeting]: \"{m_match['title']}\" (Date: {m_match['date']}, Similarity: {round(m_match.get('similarity_score', 0) * 100)}%)")
+            if m_match.get("short_summary"):
+                mem_block.append(f"Summary: {m_match['short_summary']}")
+            if m_match.get("decisions"):
+                decs_str = "; ".join(f"{d['description']}" for d in m_match["decisions"][:3])
+                mem_block.append(f"Decisions: {decs_str}")
+            if m_match.get("action_items"):
+                actions_str = "; ".join(f"{a['description']} (owner: {a['owner']}, status: {a['status']})" for a in m_match["action_items"][:3])
+                mem_block.append(f"Action Items: {actions_str}")
+        context_sections.append("\n".join(mem_block))
 
     full_context = "\n\n".join(context_sections)
-    sources = [f"meeting:{target_meeting.id}"]
     return full_context, sources
 
 
