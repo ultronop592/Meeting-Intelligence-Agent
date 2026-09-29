@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/layout/navbar";
 import { useAuth } from "@/components/providers/auth-provider";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Loader2 } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           onToggleMobile={() => setMobileOpen((value) => !value)}
         />
         <main className="app-shell flex-1">
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
