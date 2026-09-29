@@ -7,6 +7,7 @@ Includes an async background scheduler to periodically check for due tasks.
 
 import asyncio
 import logging
+import random
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
@@ -355,10 +356,12 @@ async def check_and_send_due_reminders(
 
 
 class ReminderScheduler:
-    """Background scheduler that periodically checks and dispatches due date reminders."""
+    """Background scheduler that periodically checks and dispatches due date reminders.
+    Includes startup delay and randomized interval jitter to avoid thundering-herd on Neon Postgres."""
 
-    def __init__(self, interval_seconds: int = 3600) -> None:
+    def __init__(self, interval_seconds: int = 3600, jitter_seconds: int = 180) -> None:
         self.interval_seconds = interval_seconds
+        self.jitter_seconds = jitter_seconds
         self._task: asyncio.Task | None = None
         self._is_running = False
 
@@ -367,7 +370,11 @@ class ReminderScheduler:
             return
         self._is_running = True
         self._task = asyncio.create_task(self._run_loop())
-        logger.info("ReminderScheduler started with interval %ds", self.interval_seconds)
+        logger.info(
+            "ReminderScheduler started with interval %ds (jitter: ±%ds)",
+            self.interval_seconds,
+            self.jitter_seconds,
+        )
 
     async def stop(self) -> None:
         self._is_running = False
@@ -381,6 +388,13 @@ class ReminderScheduler:
         logger.info("ReminderScheduler stopped")
 
     async def _run_loop(self) -> None:
+        # Initial startup jitter (5-30s) prevents horizontal instances from hitting Neon at boot
+        startup_delay = random.uniform(5, 30)
+        try:
+            await asyncio.sleep(startup_delay)
+        except asyncio.CancelledError:
+            return
+
         while self._is_running:
             try:
                 logger.info("ReminderScheduler: Running periodic due date check...")
@@ -402,11 +416,14 @@ class ReminderScheduler:
             except Exception as cleanup_exc:
                 logger.warning("ReminderScheduler: Stale upload cleanup error: %s", cleanup_exc)
 
+            # Randomized interval jitter (±jitter_seconds) to prevent synchronous harmonics
+            jitter = random.uniform(-self.jitter_seconds, self.jitter_seconds)
+            sleep_duration = max(60.0, self.interval_seconds + jitter)
             try:
-                await asyncio.sleep(self.interval_seconds)
+                await asyncio.sleep(sleep_duration)
             except asyncio.CancelledError:
                 break
 
 
 # Global singleton instance for FastAPI lifespan
-reminder_scheduler = ReminderScheduler(interval_seconds=3600)
+reminder_scheduler = ReminderScheduler(interval_seconds=3600, jitter_seconds=180)
