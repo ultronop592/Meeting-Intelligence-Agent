@@ -41,6 +41,8 @@ COPY db/ /app/db/
 COPY graph/ /app/graph/
 COPY models/ /app/models/
 COPY tools/ /app/tools/
+COPY alembic/ /app/alembic/
+COPY alembic.ini /app/alembic.ini
 
 # Create uploads directory and set permissions
 RUN mkdir -p /tmp/meeting-agent-uploads && \

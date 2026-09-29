@@ -1,4 +1,6 @@
-import logging 
+import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -61,96 +63,53 @@ AsyncSessionLocal = async_sessionmaker(
  
  
 # =============================================================================
-# DATABASE INITIALISATION
+# DATABASE INITIALISATION & MIGRATIONS
 # =============================================================================
- 
+
+def run_migrations() -> None:
+    """
+    Run Alembic migrations programmatically up to 'head'.
+    Uses the synchronous database URL (database_url_sync) via Alembic config.
+    """
+    from alembic.config import Config
+    from alembic import command
+
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    alembic_ini = os.path.join(backend_dir, "alembic.ini")
+
+    if not os.path.exists(alembic_ini):
+        logger.warning("alembic.ini not found at %s, skipping automated migrations.", alembic_ini)
+        return
+
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("script_location", os.path.join(backend_dir, "alembic"))
+    command.upgrade(alembic_cfg, "head")
+
+
 async def init_db() -> None:
     """
-    Creates all tables in Neon if they don't exist yet.
+    Ensures pgvector extension and applies Alembic migrations up to head.
     Called once at FastAPI startup (in main.py lifespan).
- 
-    In production you'd use Alembic migrations instead.
-    This is a convenience for development / first run.
     """
-    async with engine.begin() as conn:
-        # Neon/Postgres needs pgvector extension for Vector columns.
-        if settings.database_url.startswith("postgresql+"):
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.run_sync(Base.metadata.create_all)
+    # 1. Ensure pgvector extension on Postgres
+    if settings.database_url.startswith("postgresql+"):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception as exc:
+            logger.warning("Failed ensuring pgvector extension: %s", exc)
 
-        # === Safe column migrations (idempotent ALTER TABLE) ===
-        # These handle the case where the table already exists without new columns.
-        if settings.database_url.startswith("postgresql+"):
-
-            # --- meetings table ---
-            # user_id: added for per-user meeting isolation
-            await conn.execute(text("""
-                ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS user_id VARCHAR REFERENCES users(id) ON DELETE SET NULL
-            """))
-
-            # transcript: plain text transcript from Whisper
-            await conn.execute(text("""
-                ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS transcript TEXT
-            """))
-
-            # diarized_transcript: speaker-labelled version (SPEAKER_00: ...)
-            await conn.execute(text("""
-                ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS diarized_transcript TEXT
-            """))
-
-            # embedding_status: tracks RAG pipeline state
-            await conn.execute(text("""
-                ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS embedding_status VARCHAR NOT NULL DEFAULT 'pending'
-            """))
-
-            # transcript_embedding: 768-dim pgvector embedding for semantic search
-            await conn.execute(text("""
-                ALTER TABLE meetings
-                ADD COLUMN IF NOT EXISTS transcript_embedding vector(768)
-            """))
-
-            # --- participants table ---
-            # speaker_label: diarization label mapping e.g. SPEAKER_00
-            await conn.execute(text("""
-                ALTER TABLE participants
-                ADD COLUMN IF NOT EXISTS speaker_label VARCHAR
-            """))
-
-            # --- chat_sessions table ---
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS chat_sessions (
-                    id VARCHAR PRIMARY KEY,
-                    user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE,
-                    meeting_id VARCHAR REFERENCES meetings(id) ON DELETE SET NULL,
-                    title VARCHAR NOT NULL DEFAULT 'New Conversation',
-                    messages JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """))
-
-            # --- user_tool_credentials table ---
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS user_tool_credentials (
-                    id VARCHAR PRIMARY KEY,
-                    user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    tool_name VARCHAR NOT NULL,
-                    credentials JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    CONSTRAINT uq_user_tool UNIQUE (user_id, tool_name)
-                )
-            """))
-            await conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS idx_user_tool_credentials_user ON user_tool_credentials(user_id)
-            """))
-
-    logger.info("Database tables verified / created.")
+    # 2. Run Alembic migrations to apply pending schema changes and new columns
+    try:
+        await asyncio.to_thread(run_migrations)
+        logger.info("Database schema migrated to latest Alembic revision.")
+    except Exception as exc:
+        logger.warning(
+            "Alembic automated migration failed: %s. Falling back to Base.metadata.create_all.",
+            exc,
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
  
  
 # =============================================================================
