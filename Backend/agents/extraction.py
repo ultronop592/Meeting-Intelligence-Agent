@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from core.config import settings
-from core.llm_router import llm_router
+from core.llm_router import execute_with_llm_fallback, llm_router
 from models.schemas import AgentState, ExtractionOutput
 
 logger = logging.getLogger(__name__)
@@ -101,11 +101,17 @@ def extract_information(state: AgentState) -> dict:
         )
 
     try:
-        raw_json = _call_extraction_llm(
-            Groq(api_key=settings.groq_api_key),
-            _get_system_prompt(),
-            safe_transcript,
-            selected_model,
+        groq_client = Groq(api_key=settings.groq_api_key)
+        system_prompt = _get_system_prompt()
+        raw_json, model_used = execute_with_llm_fallback(
+            lambda model: _call_extraction_llm(
+                groq_client,
+                system_prompt,
+                safe_transcript,
+                model,
+            ),
+            primary_model=selected_model,
+            fallback_model=settings.llm_fast_model,
         )
         if not raw_json:
             return {"errors": state.errors + ["Groq returned an empty extraction response"]}
@@ -113,7 +119,7 @@ def extract_information(state: AgentState) -> dict:
         extraction = ExtractionOutput.model_validate_json(raw_json)
         return {
             "extraction": extraction,
-            "llm_model_used": selected_model,
+            "llm_model_used": model_used,
             "completed_nodes": state.completed_nodes + ["extract_information"],
         }
     except ValidationError as e:

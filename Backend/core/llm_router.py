@@ -35,11 +35,15 @@ USAGE
 
 import logging
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional, TypeVar
+
+from groq import APIConnectionError, APIError, APITimeoutError, RateLimitError
 
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 TaskType = Literal["extraction", "summary", "query"]
 
@@ -216,3 +220,44 @@ class LLMRouter:
 # Module-level singleton — import and reuse this across the app
 # ---------------------------------------------------------------------------
 llm_router = LLMRouter()
+
+
+def execute_with_llm_fallback(
+    caller: Callable[[str], T],
+    primary_model: str,
+    fallback_model: Optional[str] = None,
+) -> tuple[T, str]:
+    """Execute an LLM call with automatic cascade fallback on transient or rate-limit errors.
+
+    If primary_model fails with RateLimitError, APITimeoutError, APIConnectionError,
+    or a 429/500/502/503/504 APIError, it cascades to fallback_model (e.g. 70b -> 8b).
+
+    Returns:
+        tuple of (result, model_actually_used)
+    """
+    fallback = fallback_model or (
+        settings.llm_fast_model if primary_model != settings.llm_fast_model else None
+    )
+    try:
+        return caller(primary_model), primary_model
+    except (RateLimitError, APITimeoutError, APIConnectionError) as exc:
+        if fallback and fallback != primary_model:
+            logger.warning(
+                "Primary LLM (%s) failed with %s. Cascading fallback to %s.",
+                primary_model,
+                type(exc).__name__,
+                fallback,
+            )
+            return caller(fallback), fallback
+        raise
+    except APIError as exc:
+        status_code = getattr(exc, "status_code", None)
+        if status_code in (429, 500, 502, 503, 504) and fallback and fallback != primary_model:
+            logger.warning(
+                "Primary LLM (%s) failed with APIError HTTP %s. Cascading fallback to %s.",
+                primary_model,
+                status_code,
+                fallback,
+            )
+            return caller(fallback), fallback
+        raise
