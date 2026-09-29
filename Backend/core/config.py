@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # --- OpenRouter (Agent Chat Chatbot) -------------------------------------
     openrouter_api_key:  str = ""
-    opernrouter_api_key: str = ""  # alias for existing .env spelling
+    opernrouter_api_key: str = ""  # Deprecated alias kept for backwards compatibility with legacy .env files
     openrouter_model:    str = "meta-llama/llama-3.3-70b-instruct"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
  

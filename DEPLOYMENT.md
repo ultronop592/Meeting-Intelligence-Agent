@@ -20,7 +20,7 @@ Render Blueprints let you deploy the entire stack (Backend + Frontend) with a si
    - `DATABASE_URL`: Your Neon PostgreSQL connection string (`postgresql+asyncpg://...`)
    - `DATABASE_URL_SYNC`: Your Neon PostgreSQL sync connection string (`postgresql+psycopg2://...`)
    - `GROQ_API_KEY`: Your Groq API key (for Whisper transcription)
-   - `OPERNROUTER_API_KEY`: Your OpenRouter API key (for LLM reasoning & agent chat)
+   - `OPENROUTER_API_KEY`: Your OpenRouter API key (for LLM reasoning & agent chat; legacy `OPERNROUTER_API_KEY` also supported)
    - Optional: `JIRA_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `SLACK_WEBHOOK_URL`, `SENDGRID_API_KEY`, `SENDER_EMAIL`
 7. Click **Apply**. Render will automatically build the container and deploy both services.
 
@@ -47,7 +47,7 @@ If you only want to deploy the Backend to Render and run the frontend locally or
    - `DATABASE_URL_SYNC`: `postgresql+psycopg2://neondb_owner:...`
    - `SECRET_KEY`: (Generate a secure random string)
    - `GROQ_API_KEY`: `gsk_...`
-   - `OPERNROUTER_API_KEY`: `sk-or-v1-...`
+   - `OPENROUTER_API_KEY`: `sk-or-v1-...` (legacy `OPERNROUTER_API_KEY` also supported)
    - `OPENROUTER_MODEL`: `meta-llama/llama-3.3-70b-instruct`
    - `DIARIZATION_ENABLED`: `false` (set to `true` only if you have a paid instance with HF_TOKEN)
    - `CORS_ORIGINS`: `http://localhost:3000,https://your-frontend.vercel.app`
