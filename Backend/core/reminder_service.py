@@ -394,8 +394,13 @@ class ReminderScheduler:
                     )
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error("ReminderScheduler unexpected error: %s", e)
+            try:
+                from core.file_cleanup import cleanup_stale_uploads
+                cleaned = cleanup_stale_uploads(settings.upload_dir, settings.cleanup_stale_uploads_hours)
+                if cleaned > 0:
+                    logger.info("ReminderScheduler: Purged %d stale uploaded audio file(s)", cleaned)
+            except Exception as cleanup_exc:
+                logger.warning("ReminderScheduler: Stale upload cleanup error: %s", cleanup_exc)
 
             try:
                 await asyncio.sleep(self.interval_seconds)

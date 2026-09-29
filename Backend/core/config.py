@@ -77,9 +77,11 @@ class Settings(BaseSettings):
     upstash_redis_rest_url:   str = ""
     upstash_redis_rest_token: str = ""
  
-    # --- File upload ---------------------------------------------------------
+    # --- File upload & storage cleanup ---------------------------------------
     max_upload_size_mb: int = 1024
     upload_dir:         str = "/tmp/meeting-agent-uploads"
+    delete_audio_after_processing: bool = True
+    cleanup_stale_uploads_hours: int = 24
 
     # --- Audio chunking (for files > Groq 25 MB transcription limit) ---------
     # Duration of each chunk in seconds. 600 s = 10 min.

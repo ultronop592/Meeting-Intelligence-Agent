@@ -9,11 +9,10 @@ from langsmith import traceable
 from agents.extraction import extract_information
 from agents.summary import generate_summary
 from agents.transcription import transcribe_audio
+from core.config import settings
+from core.file_cleanup import delete_audio_file
 from db.database import save_to_database
 from models.schemas import AgentState
-from tools.calender_tool import book_calendar
-from tools.jira_tool import create_jira_tickets
-from tools.slack_tool import send_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +145,7 @@ async def arun_meeting_agent(
     audio_filename: str,
     user_id: str | None = None,
     job_id: str | None = None,
+    cleanup_audio: bool | None = None,
 ) -> AgentState:
     """Asynchronously execute the 4-stage multi-agent meeting pipeline.
 
@@ -184,9 +184,18 @@ async def arun_meeting_agent(
         logger.exception("Graph execution failed after %d ms: %s", total_duration_ms, e)
         initial_state.errors.append(f"Unexpected pipeline failure: {e}")
         return initial_state
+    finally:
+        should_cleanup = cleanup_audio if cleanup_audio is not None else settings.delete_audio_after_processing
+        if should_cleanup and audio_file_path:
+            delete_audio_file(audio_file_path)
 
 
-def run_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | None = None) -> AgentState:
+def run_meeting_agent(
+    audio_file_path: str,
+    audio_filename: str,
+    user_id: str | None = None,
+    cleanup_audio: bool | None = None,
+) -> AgentState:
     """Synchronous wrapper for arun_meeting_agent for backwards-compatibility / testing."""
     try:
         loop = asyncio.get_running_loop()
@@ -196,8 +205,13 @@ def run_meeting_agent(audio_file_path: str, audio_filename: str, user_id: str | 
     if loop and loop.is_running():
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(asyncio.run, arun_meeting_agent(audio_file_path, audio_filename, user_id))
+            future = executor.submit(
+                asyncio.run,
+                arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio),
+            )
             return future.result()
     else:
-        return asyncio.run(arun_meeting_agent(audio_file_path, audio_filename, user_id))
+        return asyncio.run(
+            arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio)
+        )
 
