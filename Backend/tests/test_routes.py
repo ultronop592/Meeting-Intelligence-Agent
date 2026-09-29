@@ -118,6 +118,27 @@ async def test_list_meetings_with_data(authenticated_client, seeded_meeting):
     assert len(meetings) >= 1
     assert meetings[0]["id"] == seeded_meeting.id
     assert meetings[0]["title"] == "Weekly Standup"
+    assert resp.headers.get("x-total-count") == "1"
+    assert resp.headers.get("x-page-limit") == "20"
+    assert resp.headers.get("x-page-offset") == "0"
+
+
+@pytest.mark.asyncio
+async def test_list_meetings_pagination(authenticated_client, seeded_meeting):
+    # Test valid pagination offset beyond available items
+    resp = await authenticated_client.get("/meetings?limit=10&offset=5")
+    assert resp.status_code == 200
+    assert resp.json() == []
+    assert resp.headers.get("x-total-count") == "1"
+    assert resp.headers.get("x-page-limit") == "10"
+    assert resp.headers.get("x-page-offset") == "5"
+
+    # Test limit validation constraint (ge=1, le=100)
+    resp_zero = await authenticated_client.get("/meetings?limit=0")
+    assert resp_zero.status_code == 422
+
+    resp_too_large = await authenticated_client.get("/meetings?limit=101")
+    assert resp_too_large.status_code == 422
 
 
 @pytest.mark.asyncio

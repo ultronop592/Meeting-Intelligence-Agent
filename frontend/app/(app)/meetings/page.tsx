@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { toUserErrorMessage } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import { Mic, UploadCloud } from "lucide-react";
+import { Mic, UploadCloud, ChevronLeft, ChevronRight } from "lucide-react";
 
 type JobTimerMeta = {
   jobId: string | null;
@@ -40,7 +40,12 @@ function formatDuration(ms: number): string {
 
 export default function MeetingsPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error, refetch } = useMeetings();
+  const [page, setPage] = useState(0);
+  const pageSize = 12;
+  const { data, isLoading, error, refetch } = useMeetings({
+    limit: pageSize,
+    offset: page * pageSize,
+  });
   const uploadMutation = useUploadMeeting();
   const activeJobMetaQuery = useQuery<JobTimerMeta>({
     queryKey: ["active-job-meta"],
@@ -92,6 +97,10 @@ export default function MeetingsPage() {
       window.removeEventListener("mia-global-search", handler as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [query, filter]);
 
   useEffect(() => {
     if (uploadMutation.isSuccess) {
@@ -366,14 +375,56 @@ export default function MeetingsPage() {
         <div className="rounded-[16px] border border-border bg-surface p-6 text-center">
           <p className="text-base font-semibold text-foreground">No meetings yet</p>
           <p className="mt-2 text-sm text-text-secondary">
-            Upload your first meeting to generate summaries, action items, and decisions.
+            {page > 0
+              ? "No meetings found on this page."
+              : "Upload your first meeting to generate summaries, action items, and decisions."}
           </p>
+          {page > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => setPage(0)}
+            >
+              Back to First Page
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((meeting) => (
-            <MeetingCard key={meeting.id} meeting={meeting} />
-          ))}
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((meeting) => (
+              <MeetingCard key={meeting.id} meeting={meeting} />
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
+            <p className="text-xs text-text-secondary">
+              Page {page + 1} &bull; Showing {page * pageSize + 1}&ndash;{page * pageSize + filtered.length} meetings
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0 || isLoading}
+                className="gap-1.5"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={(data?.length ?? 0) < pageSize || isLoading}
+                className="gap-1.5"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

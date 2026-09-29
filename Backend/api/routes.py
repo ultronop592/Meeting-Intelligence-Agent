@@ -311,21 +311,34 @@ async def meeting_ws_progress(websocket: WebSocket, job_id: str):
 
 @router.get("/meetings", response_model=list[MeetingListItem], tags=["meetings"])
 async def list_meetings(
-    limit: int = 20,
-    offset: int = 0,
+    response: Response,
+    limit: int = Query(default=20, ge=1, le=100, description="Max meetings to return per page"),
+    offset: int = Query(default=0, ge=0, description="Offset cursor for pagination"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
+
+    # Fast indexed total count for pagination metadata
+    total_count = (
+        await db.execute(select(func.count(Meeting.id)).where(user_filter))
+    ).scalar_one()
+
     stmt = (
         select(Meeting, func.count(DBActionItem.id).label("action_items_count"))
         .outerjoin(DBActionItem, DBActionItem.meeting_id == Meeting.id)
-        .where((Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None)))
+        .where(user_filter)
         .group_by(Meeting.id)
         .order_by(Meeting.created_at.desc())
         .limit(limit)
         .offset(offset)
     )
     rows = (await db.execute(stmt)).all()
+
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page-Limit"] = str(limit)
+    response.headers["X-Page-Offset"] = str(offset)
+
     return [
         MeetingListItem(
             id=meeting.id,
