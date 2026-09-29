@@ -10,6 +10,7 @@ import { MeetingCard } from "@/components/meeting/meeting-card";
 import { UploadDropzone } from "@/components/meeting/upload-dropzone";
 import { LiveAudioRecorder } from "@/components/meeting/live-audio-recorder";
 import { ProcessingTimeline } from "@/components/meeting/processing-timeline";
+import { PipelineTracker } from "@/components/processing/pipeline-tracker";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -318,6 +319,17 @@ export default function MeetingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Real-time WebSocket Multi-Agent Pipeline Tracker */}
+      {activeJobMetaQuery.data.jobId && !activeJobMetaQuery.data.isDismissed && (
+        <PipelineTracker
+          completedNodes={jobStatus.data?.completed_nodes || []}
+          status={jobStatus.data?.status}
+          isRealtime={jobStatus.isRealtime}
+          durationMs={jobStatus.data?.duration_ms ?? elapsedMs}
+          nodeTimings={jobStatus.data?.node_timings}
+        />
+      )}
 
       {/* Dedicated Multi-Agent Processing Command Center */}
       <ProcessingTimeline
