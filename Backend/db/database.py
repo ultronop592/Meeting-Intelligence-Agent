@@ -32,8 +32,9 @@ def _normalized_async_database_url(url: str) -> str:
 # =============================================================================
 
 # create_async_engine builds the connection pool to Neon.
-# pool_size=5    — keep 5 connections open (reuse across requests)
-# max_overflow=10 — allow up to 10 extra connections under load
+# pool_size=2       — tuned for Render free tier (512MB RAM) and Neon connection limits
+# max_overflow=3    — max 5 concurrent connections total
+# pool_recycle=300  — recycle connections every 5 min to avoid Neon idle disconnects
 # pool_pre_ping=True — test connections before use (handles Neon idle timeouts)
 if settings.database_url.startswith("sqlite+"):
     engine = create_async_engine(
@@ -47,8 +48,9 @@ else:
             "ssl": "require",
             "statement_cache_size": 0,  # Required for Neon PgBouncer transaction pooler
         },
-        pool_size=5,
-        max_overflow=10,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle,
         pool_pre_ping=True,
         echo=not settings.is_production,  # Log SQL queries in development only
     )
