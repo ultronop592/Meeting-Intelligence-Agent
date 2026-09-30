@@ -1,8 +1,9 @@
 import logging
-import os
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,8 @@ logger = logging.getLogger(__name__)
 #   falls back to in-memory storage so dev workflows are unaffected.
 # ---------------------------------------------------------------------------
 
-_redis_url = os.getenv("UPSTASH_REDIS_REST_URL", "").strip()
-_redis_token = os.getenv("UPSTASH_REDIS_REST_TOKEN", "").strip()
+_redis_url   = settings.upstash_redis_rest_url.strip()
+_redis_token = settings.upstash_redis_rest_token.strip()
 
 if _redis_url and _redis_token:
     # Build a standard redis:// URI that slowapi's storage backend understands.
