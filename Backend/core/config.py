@@ -48,9 +48,10 @@ class Settings(BaseSettings):
     # --- Neon (Postgres) -----------------------------------------------------
     database_url:      str   # async  URL  — postgresql+asyncpg://...
     database_url_sync: str   # sync   URL  — postgresql+psycopg2://...
-    db_pool_size:      int = 2   # Safe default for Render free tier + Neon serverless
-    db_max_overflow:   int = 3   # Max overflow connections under spike loads
+    db_pool_size:      int = 10  # Enough for 100 concurrent users (10 base slots)
+    db_max_overflow:   int = 20  # Burst headroom → 30 total max connections
     db_pool_recycle:   int = 300 # Recycle connections every 5m to avoid idle disconnects
+    db_pool_timeout:   int = 10  # Fail fast after 10s instead of queuing for 30s
  
     # --- LangSmith (optional — disable by setting langchain_tracing_v2=false) -
     langchain_tracing_v2: bool = False

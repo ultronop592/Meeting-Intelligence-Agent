@@ -32,8 +32,9 @@ def _normalized_async_database_url(url: str) -> str:
 # =============================================================================
 
 # create_async_engine builds the connection pool to Neon.
-# pool_size=2       — tuned for Render free tier (512MB RAM) and Neon connection limits
-# max_overflow=3    — max 5 concurrent connections total
+# pool_size=10      — 10 base slots for 100 concurrent users
+# max_overflow=20   — 30 total max connections under burst load
+# pool_timeout=10   — fail fast after 10s (not 30s) to avoid cascading queues
 # pool_recycle=300  — recycle connections every 5 min to avoid Neon idle disconnects
 # pool_pre_ping=True — test connections before use (handles Neon idle timeouts)
 if settings.database_url.startswith("sqlite+"):
@@ -51,6 +52,7 @@ else:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_recycle=settings.db_pool_recycle,
+        pool_timeout=settings.db_pool_timeout,
         pool_pre_ping=True,
         echo=not settings.is_production,  # Log SQL queries in development only
     )
