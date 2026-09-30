@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -26,13 +27,36 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    """Hash a raw text password using bcrypt."""
+    """Hash a raw text password using bcrypt (synchronous — use hash_password_async in routes)."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a stored bcrypt hash."""
+    """Verify a plain password against a stored bcrypt hash (synchronous — use async variant in routes)."""
     return pwd_context.verify(plain_password, hashed_password)
+
+
+async def hash_password_async(password: str) -> str:
+    """
+    Hash a raw password using bcrypt, offloaded to a thread pool.
+
+    bcrypt is intentionally slow (CPU-bound, ~100-200ms). Running it directly
+    in an async route blocks the entire event loop. This wrapper uses
+    run_in_executor so the event loop stays free to handle other requests.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, pwd_context.hash, password)
+
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a plain password against a bcrypt hash, offloaded to a thread pool.
+
+    Without this, 100 concurrent logins would each block the event loop for
+    ~100-200ms, stalling all other in-flight requests until bcrypt finishes.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, pwd_context.verify, plain_password, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

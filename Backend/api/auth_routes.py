@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import create_access_token, get_current_user, hash_password, verify_password
+from core.auth import create_access_token, get_current_user, hash_password_async, verify_password_async
 from core.limiter import limiter
 from db.database import get_db
 from db.models import User
@@ -30,7 +30,7 @@ async def register_user(request: Request, payload: UserRegister, db: AsyncSessio
 
     user = User(
         email=payload.email,
-        hashed_password=hash_password(payload.password),
+        hashed_password=await hash_password_async(payload.password),
         full_name=payload.full_name,
     )
     db.add(user)
@@ -53,7 +53,7 @@ async def login_user(request: Request, payload: UserLogin, db: AsyncSession = De
         await db.execute(select(User).where(User.email == payload.email.strip().lower()))
     ).scalars().first()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user or not await verify_password_async(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
@@ -78,7 +78,7 @@ async def login_token_form(
         await db.execute(select(User).where(User.email == form_data.username.strip().lower()))
     ).scalars().first()
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not await verify_password_async(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
