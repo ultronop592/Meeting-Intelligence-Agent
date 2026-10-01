@@ -107,10 +107,11 @@ class AgentState(BaseModel):
     """
  
     # --- Input (set before graph starts) -------------------------------------
-    audio_file_path: Optional[str] = None
-    audio_filename:  Optional[str] = None
-    user_id:         Optional[str] = None
-    job_id:          Optional[str] = None
+    audio_file_path:   Optional[str] = None
+    audio_filename:    Optional[str] = None
+    audio_storage_key: Optional[str] = None
+    user_id:           Optional[str] = None
+    job_id:            Optional[str] = None
 
     # --- Node outputs --------------------------------------------------------
     transcript:           Optional[str]              = None
@@ -186,6 +187,7 @@ class MeetingRow(BaseModel):
     user_id:          Optional[str]       = None
     title:            str
     audio_filename:   str
+    audio_storage_key:Optional[str]       = None
     duration_minutes: int
     short_summary:    str
     detailed_summary: str

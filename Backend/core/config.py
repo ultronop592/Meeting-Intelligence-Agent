@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     delete_audio_after_processing: bool = True
     cleanup_stale_uploads_hours: int = 24
 
+    # --- Object Storage (Cloudflare R2 / AWS S3 / MinIO) ---------------------
+    storage_backend:                 str = "local"  # "local" or "s3"
+    s3_endpoint_url:                 str = ""       # e.g. https://<account_id>.r2.cloudflarestorage.com
+    s3_access_key_id:                str = ""
+    s3_secret_access_key:            str = ""
+    s3_bucket_name:                  str = ""
+    s3_region_name:                  str = "auto"
+    s3_presigned_url_expire_seconds: int = 3600
+
     # --- Audio chunking (for files > Groq 25 MB transcription limit) ---------
     # Duration of each chunk in seconds. 600 s = 10 min.
     # At 128 kbps MP3: 10 min ≈ 9.6 MB — well under Groq's 25 MB limit.

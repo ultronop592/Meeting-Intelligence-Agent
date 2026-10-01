@@ -61,6 +61,7 @@ class Meeting(Base):
     user_id          = Column(String,  ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     title            = Column(String,  nullable=False)
     audio_filename   = Column(String,  nullable=False)
+    audio_storage_key= Column(String(512), nullable=True)
     duration_minutes = Column(Integer, nullable=False)
     short_summary    = Column(Text,    nullable=False)
     detailed_summary = Column(Text,    nullable=False)

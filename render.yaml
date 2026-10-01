@@ -56,6 +56,18 @@ services:
         sync: false
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
+      - key: STORAGE_BACKEND
+        value: "local"
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: S3_REGION_NAME
+        value: "auto"
 
   # =============================================================================
   # Frontend Client Interface (Next.js App Router)

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 
@@ -165,6 +166,15 @@ async def arun_meeting_agent(
         user_id=user_id,
         job_id=job_id,
     )
+    if audio_file_path and os.path.exists(audio_file_path):
+        try:
+            from core.storage import storage_service
+            storage_key = f"audio/{user_id or 'shared'}/{int(time.time())}_{audio_filename}"
+            uploaded_key = await storage_service.upload_file(audio_file_path, storage_key)
+            initial_state.audio_storage_key = uploaded_key
+        except Exception as storage_exc:
+            logger.warning("Could not persist audio to storage service: %s", storage_exc)
+
     try:
         logger.info("Pipeline execution started for '%s' (User: %s, Job: %s)", audio_filename, user_id or "anonymous", job_id or "none")
         final_state_dict: dict[str, Any] = await agent_graph.ainvoke(initial_state)

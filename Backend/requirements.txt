@@ -39,8 +39,9 @@ google-auth-httplib2==0.2.0
 sendgrid==6.11.0                   # Email (Node 7)
 slack-sdk==3.34.0                  # Slack (Node 7)
 
-# --- Job queue ---------------------------------------------------------------
+# --- Job queue & Object Storage ---------------------------------------------
 upstash-redis==1.1.0      # Background processing for large audio files
+boto3==1.36.1             # Cloudflare R2 / AWS S3 object storage for audio files
 
 # --- HTTP / Async ------------------------------------------------------------
 httpx==0.28.1

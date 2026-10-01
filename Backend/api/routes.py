@@ -7,13 +7,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile, status, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current_user
 from core.limiter import limiter
 from core.config import settings
+from core.storage import storage_service
 from core.ws_manager import ws_manager
 from db.database import (
     AsyncSessionLocal,
@@ -1023,9 +1024,22 @@ async def stream_meeting_audio(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     _verify_meeting_ownership(meeting, current_user)
 
-    possible_paths = [
-        os.path.join(settings.upload_dir, meeting.audio_filename),
-    ]
+    # 1. If stored in S3/Cloudflare R2, generate a presigned streaming redirect URL
+    if getattr(meeting, "audio_storage_key", None):
+        presigned_url = await storage_service.get_presigned_url(meeting.audio_storage_key)
+        if presigned_url:
+            return RedirectResponse(
+                url=presigned_url,
+                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                headers={"Cache-Control": "private, max-age=3600"},
+            )
+
+    # 2. Local storage checks (direct storage_key or upload_dir search)
+    possible_paths = []
+    if getattr(meeting, "audio_storage_key", None):
+        possible_paths.append(os.path.join(settings.upload_dir, meeting.audio_storage_key))
+
+    possible_paths.append(os.path.join(settings.upload_dir, meeting.audio_filename))
     if os.path.exists(settings.upload_dir):
         for fname in os.listdir(settings.upload_dir):
             if fname.endswith(meeting.audio_filename) or meeting.audio_filename in fname:
@@ -1040,7 +1054,7 @@ async def stream_meeting_audio(
     if not found_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audio file for meeting '{meeting.title}' is not available on server disk.",
+            detail=f"Audio file for meeting '{meeting.title}' is not available on server disk or object storage.",
         )
 
     ext = Path(found_path).suffix.lower()

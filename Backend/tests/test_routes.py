@@ -9,6 +9,7 @@ Each test:
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+from core.config import settings
 
 
 # =============================================================================
@@ -594,5 +595,49 @@ def test_meeting_websocket_progress():
         websocket.send_text("ping")
         data = websocket.receive_text()
         assert data == "pong"
+
+
+@pytest.mark.asyncio
+async def test_stream_meeting_audio_local(authenticated_client, seeded_meeting, tmp_path):
+    """Ensure local audio file returns 200 stream."""
+    import os
+    audio_path = os.path.join(settings.upload_dir, seeded_meeting.audio_filename)
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    with open(audio_path, "wb") as f:
+        f.write(b"AUDIO_DATA_FOR_LOCAL_STREAMING")
+
+    try:
+        resp = await authenticated_client.get(f"/meetings/{seeded_meeting.id}/audio")
+        assert resp.status_code == 200
+        assert resp.headers["Accept-Ranges"] == "bytes"
+        assert b"AUDIO_DATA_FOR_LOCAL_STREAMING" in resp.content
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+
+
+@pytest.mark.asyncio
+async def test_stream_meeting_audio_s3_redirect(authenticated_client, seeded_meeting):
+    """Ensure S3-backed audio returns 307 Temporary Redirect to presigned URL."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_presigned = "https://r2.cloudflarestorage.com/meetings-bucket/audio/stream.mp3?token=xyz"
+    seeded_meeting.audio_storage_key = "audio/user1/stream.mp3"
+
+    with patch("api.routes.storage_service.get_presigned_url", new=AsyncMock(return_value=mock_presigned)):
+        resp = await authenticated_client.get(
+            f"/meetings/{seeded_meeting.id}/audio",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 307
+        assert resp.headers["location"] == mock_presigned
+
+
+@pytest.mark.asyncio
+async def test_stream_meeting_audio_not_found(authenticated_client, seeded_meeting):
+    """Ensure missing audio returns 404."""
+    resp = await authenticated_client.get(f"/meetings/{seeded_meeting.id}/audio")
+    assert resp.status_code == 404
+
 
 

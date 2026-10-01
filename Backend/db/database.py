@@ -175,6 +175,7 @@ async def save_to_database(state: AgentState) -> dict:
                 user_id=getattr(state, "user_id", None),
                 title=state.summary.title,
                 audio_filename=state.audio_filename or "unknown.mp3",
+                audio_storage_key=getattr(state, "audio_storage_key", None),
                 duration_minutes=state.summary.duration_minutes,
                 short_summary=state.summary.short_summary,
                 detailed_summary=state.summary.detailed_summary,
