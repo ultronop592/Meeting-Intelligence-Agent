@@ -73,6 +73,12 @@ from tools.jira_tool import send_jira_for_meeting
 from tools.slack_tool import send_slack_for_meeting
 from core.pdf_service import generate_meeting_pdf
 from core.reminder_service import check_and_send_due_reminders, evaluate_due_urgency, parse_due_date
+from core.cache import (
+    cache_get, cache_set, cache_delete, invalidate_user_analytics, invalidate_meetings_list,
+    key_analytics_summary, key_analytics_participants, key_analytics_timeline,
+    key_analytics_action_items, key_analytics_topics,
+    key_meetings_list, TTL_ANALYTICS, TTL_MEETING_LIST,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -320,6 +326,16 @@ async def list_meetings(
 ):
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
 
+    # Cache hit — skip DB for paginated list queries
+    _ck = key_meetings_list(current_user.id, limit, offset)
+    cached = await cache_get(_ck)
+    if cached is not None:
+        response.headers["X-Total-Count"] = str(cached.get("total", 0))
+        response.headers["X-Page-Limit"]  = str(limit)
+        response.headers["X-Page-Offset"] = str(offset)
+        response.headers["X-Cache"] = "HIT"
+        return [MeetingListItem(**m) for m in cached["items"]]
+
     # Fast indexed total count for pagination metadata
     total_count = (
         await db.execute(select(func.count(Meeting.id)).where(user_filter))
@@ -339,8 +355,9 @@ async def list_meetings(
     response.headers["X-Total-Count"] = str(total_count)
     response.headers["X-Page-Limit"] = str(limit)
     response.headers["X-Page-Offset"] = str(offset)
+    response.headers["X-Cache"] = "MISS"
 
-    return [
+    items = [
         MeetingListItem(
             id=meeting.id,
             title=meeting.title,
@@ -352,6 +369,8 @@ async def list_meetings(
         )
         for meeting, count in rows
     ]
+    await cache_set(_ck, {"total": total_count, "items": [i.model_dump() for i in items]}, ttl=TTL_MEETING_LIST)
+    return items
 
 
 @router.get("/meetings/{meeting_id}", response_model=MeetingDetailResponse, tags=["meetings"])
@@ -578,6 +597,9 @@ async def delete_meeting(
     _verify_meeting_ownership(meeting, current_user)
     await db.delete(meeting)
     await db.flush()
+    # Invalidate list and analytics caches so next request reflects the deletion
+    await invalidate_meetings_list(current_user.id)
+    await invalidate_user_analytics(current_user.id)
     return {"deleted": True, "meeting_id": meeting_id}
 
 
@@ -1601,6 +1623,11 @@ async def get_analytics_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Return high-level analytics summary: meeting counts, average duration, action item completion rate."""
+    _ck = key_analytics_summary(current_user.id)
+    cached = await cache_get(_ck)
+    if cached is not None:
+        return AnalyticsSummaryResponse(**cached)
+
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
     
     stmt_meetings = select(Meeting).where(user_filter)
@@ -1669,7 +1696,7 @@ async def get_analytics_summary(
         completion_rate=rate_30d,
     )
     
-    return AnalyticsSummaryResponse(
+    result = AnalyticsSummaryResponse(
         total_meetings=total_meetings,
         avg_duration_minutes=avg_duration,
         total_action_items=total_action_items,
@@ -1678,6 +1705,8 @@ async def get_analytics_summary(
         last_7_days=stats_7d,
         last_30_days=stats_30d,
     )
+    await cache_set(_ck, result.model_dump(), ttl=TTL_ANALYTICS)
+    return result
 
 
 @router.get("/analytics/participants", response_model=AnalyticsParticipantsResponse, tags=["analytics"])
@@ -1686,6 +1715,11 @@ async def get_analytics_participants(
     current_user: User = Depends(get_current_user),
 ):
     """Leaderboard of active participants and action item load."""
+    _ck = key_analytics_participants(current_user.id)
+    cached = await cache_get(_ck)
+    if cached is not None:
+        return AnalyticsParticipantsResponse(**cached)
+
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
     stmt_meetings = select(Meeting.id).where(user_filter)
     meeting_ids = (await db.execute(stmt_meetings)).scalars().all()
@@ -1729,7 +1763,9 @@ async def get_analytics_participants(
         for name, info in part_stats.items()
     ]
     result.sort(key=lambda x: (x.meetings_count, x.action_items_count), reverse=True)
-    return AnalyticsParticipantsResponse(participants=result)
+    participants_result = AnalyticsParticipantsResponse(participants=result)
+    await cache_set(_ck, participants_result.model_dump(), ttl=TTL_ANALYTICS)
+    return participants_result
 
 
 @router.get("/analytics/timeline", response_model=AnalyticsTimelineResponse, tags=["analytics"])
@@ -1739,6 +1775,11 @@ async def get_analytics_timeline(
     current_user: User = Depends(get_current_user),
 ):
     """Meeting frequency and action item completion trend over time (weekly/monthly)."""
+    _ck = key_analytics_timeline(current_user.id) + f":{period}"
+    cached = await cache_get(_ck)
+    if cached is not None:
+        return AnalyticsTimelineResponse(**cached)
+
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
     stmt_meetings = select(Meeting).where(user_filter).order_by(Meeting.created_at.asc())
     meetings = (await db.execute(stmt_meetings)).scalars().all()
@@ -1793,7 +1834,9 @@ async def get_analytics_timeline(
             )
         )
         
-    return AnalyticsTimelineResponse(period_type=period, timeline=timeline_points)
+    timeline_result = AnalyticsTimelineResponse(period_type=period, timeline=timeline_points)
+    await cache_set(_ck, timeline_result.model_dump(), ttl=TTL_ANALYTICS)
+    return timeline_result
 
 
 @router.get("/analytics/action-items", response_model=AnalyticsActionItemsResponse, tags=["analytics"])
@@ -1802,6 +1845,11 @@ async def get_analytics_action_items(
     current_user: User = Depends(get_current_user),
 ):
     """Breakdown of open, in-progress, done, and overdue action items across all meetings and per owner."""
+    _ck = key_analytics_action_items(current_user.id)
+    cached = await cache_get(_ck)
+    if cached is not None:
+        return AnalyticsActionItemsResponse(**cached)
+
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
     stmt_meetings = select(Meeting.id).where(user_filter)
     meeting_ids = (await db.execute(stmt_meetings)).scalars().all()
@@ -1863,13 +1911,15 @@ async def get_analytics_action_items(
     ]
     by_owner.sort(key=lambda x: x.total, reverse=True)
     
-    return AnalyticsActionItemsResponse(
+    action_items_result = AnalyticsActionItemsResponse(
         total_open=total_open,
         total_in_progress=total_in_progress,
         total_done=total_done,
         total_overdue=total_overdue,
         by_owner=by_owner,
     )
+    await cache_set(_ck, action_items_result.model_dump(), ttl=TTL_ANALYTICS)
+    return action_items_result
 
 
 @router.get("/analytics/topics", response_model=AnalyticsTopicsResponse, tags=["analytics"])
@@ -1880,7 +1930,12 @@ async def get_analytics_topics(
     """Top recurring topics and keywords extracted across all meetings."""
     import re
     from collections import Counter
-    
+
+    _ck = key_analytics_topics(current_user.id)
+    cached = await cache_get(_ck)
+    if cached is not None:
+        return AnalyticsTopicsResponse(**cached)
+
     user_filter = (Meeting.user_id == current_user.id) | (Meeting.user_id.is_(None))
     stmt_meetings = select(Meeting).where(user_filter)
     meetings = (await db.execute(stmt_meetings)).scalars().all()
@@ -1909,7 +1964,9 @@ async def get_analytics_topics(
         TopicKeywordItem(topic=topic, count=cnt)
         for topic, cnt in counter.most_common(15)
     ]
-    return AnalyticsTopicsResponse(topics=top_topics)
+    topics_result = AnalyticsTopicsResponse(topics=top_topics)
+    await cache_set(_ck, topics_result.model_dump(), ttl=TTL_ANALYTICS)
+    return topics_result
 
 
 # =============================================================================

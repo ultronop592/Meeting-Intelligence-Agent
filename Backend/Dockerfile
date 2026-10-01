@@ -71,19 +71,24 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 # --workers ${WEB_CONCURRENCY:-2}
 #   Defaults to 2 workers (Render free tier). Override via WEB_CONCURRENCY env var.
 #
-# --worker-connections 100
-#   Max simultaneous connections per worker (100 users / 2 workers = 50 each).
+# --worker-connections 1000
+#   Max simultaneous connections per worker for high concurrent requests and WebSockets.
+#
+# --backlog 2048
+#   Increased listen backlog queue to absorb sudden burst traffic without connection drops.
 #
 # --timeout 120
 #   Worker timeout in seconds — long enough for audio upload + LLM processing.
 #
-# --loop uvloop
-#   Drop-in faster event loop implementation (2-4x faster I/O than asyncio default).
+# --keep-alive 5
+#   Keeps HTTP keep-alive sockets open for connection reuse.
 CMD ["sh", "-c", \
     "exec gunicorn api.main:app \
     --worker-class uvicorn.workers.UvicornWorker \
     --workers ${WEB_CONCURRENCY:-2} \
-    --worker-connections 100 \
+    --worker-connections 1000 \
+    --backlog 2048 \
+    --keep-alive 5 \
     --timeout 120 \
     --bind 0.0.0.0:${PORT:-8000} \
     --log-level info"]

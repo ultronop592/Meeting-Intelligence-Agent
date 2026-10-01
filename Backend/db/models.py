@@ -7,6 +7,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
@@ -63,6 +64,10 @@ class Meeting(Base):
     audio_filename   = Column(String,  nullable=False)
     audio_storage_key= Column(String(512), nullable=True)
     duration_minutes = Column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("ix_meetings_user_created", "user_id", "created_at"),
+    )
     short_summary    = Column(Text,    nullable=False)
     detailed_summary = Column(Text,    nullable=False)
     transcript          = Column(Text, nullable=True)
@@ -118,7 +123,12 @@ class ActionItem(Base):
     )
  
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
- 
+
+    __table_args__ = (
+        Index("ix_action_items_meeting_status", "meeting_id", "status"),
+        Index("ix_action_items_due_date", "due_date"),
+    )
+
     meeting = relationship("Meeting", back_populates="action_items")
  
 
@@ -129,7 +139,7 @@ class Decision(Base):
     __tablename__ = "decisions"
  
     id          = Column(String, primary_key=True, default=_uuid)
-    meeting_id  = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False)
+    meeting_id  = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
     description = Column(Text,   nullable=False)
     context     = Column(Text,   nullable=False)
     created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
@@ -145,7 +155,7 @@ class Participant(Base):
     __tablename__ = "participants"
  
     id            = Column(String, primary_key=True, default=_uuid)
-    meeting_id    = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False)
+    meeting_id    = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
     name          = Column(String, nullable=False)
     email         = Column(String, nullable=True)   # Optional — may be resolved later
     speaker_label = Column(String, nullable=True)   # e.g. "SPEAKER_00" for diarization mapping
