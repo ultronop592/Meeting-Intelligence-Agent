@@ -72,6 +72,7 @@ class Meeting(Base):
     detailed_summary = Column(Text,    nullable=False)
     transcript          = Column(Text, nullable=True)
     diarized_transcript = Column(Text, nullable=True)
+    transcript_words    = Column(JSON, nullable=True)
 
     # EmbeddingStatus — tracks RAG pipeline: pending → completed/failed
     # SAEnum maps the Python string values directly to a Postgres ENUM type

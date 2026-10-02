@@ -121,6 +121,8 @@ class AgentState(BaseModel):
     diarized_transcript:  Optional[str]              = None
     # Raw diarization segments: [{"speaker": "SPEAKER_00", "start": 0.0, "end": 5.2}, ...]
     speaker_segments:     list[dict]                 = Field(default_factory=list)
+    # Word-level Whisper timestamps: [{"word": "Hello", "start": 0.24, "end": 0.68, "speaker": "SPEAKER_00"}, ...]
+    transcript_words:     list[dict]                 = Field(default_factory=list)
     extraction:           Optional[ExtractionOutput] = None
     summary:              Optional[MeetingSummary]   = None
     meeting_id:           Optional[str]              = None
@@ -193,6 +195,7 @@ class MeetingRow(BaseModel):
     detailed_summary: str
     transcript:          Optional[str]       = None
     diarized_transcript: Optional[str]       = None
+    transcript_words:    Optional[list[dict]]= None
     embedding_status: EmbeddingStatus     = EmbeddingStatus.PENDING
     created_at:       Optional[datetime]  = None
  

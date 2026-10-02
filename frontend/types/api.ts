@@ -70,6 +70,13 @@ export type MeetingListItem = {
 export type ActionItemStatus = "open" | "in_progress" | "done";
 export type Priority = "low" | "medium" | "high";
 
+export type TranscriptWord = {
+  word: string;
+  start: number;
+  end: number;
+  speaker?: string | null;
+};
+
 export type MeetingRow = {
   id: string;
   title: string;
@@ -79,6 +86,7 @@ export type MeetingRow = {
   detailed_summary: string;
   transcript?: string | null;
   diarized_transcript?: string | null;
+  transcript_words?: TranscriptWord[] | null;
   embedding_status: "pending" | "completed" | "failed";
   created_at: string | null;
 };

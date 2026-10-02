@@ -303,3 +303,66 @@ def test_transcribe_audio_chunking_ffmpeg_missing(tmp_path):
     assert result["errors"]
     combined = " ".join(result["errors"])
     assert "Install ffmpeg" in combined or "validation failed" in combined
+
+
+# =============================================================================
+# Word-Level Whisper Timestamps & Speaker Attribution
+# =============================================================================
+
+def test_assign_speakers_to_words():
+    from agents.transcription import assign_speakers_to_words
+
+    words = [
+        {"word": "Hello", "start": 0.1, "end": 0.4},
+        {"word": "everyone", "start": 0.5, "end": 0.9},
+        {"word": "Updates", "start": 2.1, "end": 2.6},
+    ]
+    speaker_segments = [
+        {"speaker": "Alice", "start": 0.0, "end": 1.5},
+        {"speaker": "Bob", "start": 2.0, "end": 3.0},
+    ]
+
+    assigned = assign_speakers_to_words(words, speaker_segments)
+    assert len(assigned) == 3
+    assert assigned[0]["speaker"] == "Alice"
+    assert assigned[1]["speaker"] == "Alice"
+    assert assigned[2]["speaker"] == "Bob"
+
+
+def test_transcribe_audio_provides_word_level_timestamps(tmp_path):
+    from agents.transcription import VerboseTranscriptionResult
+
+    audio = tmp_path / "meeting.mp3"
+    audio.write_bytes(b"small-audio-data")
+    state = AgentState(audio_file_path=str(audio), audio_filename="meeting.mp3")
+
+    mock_segments = [
+        {"text": "Hello world.", "start": 0.0, "end": 1.2},
+    ]
+    mock_words = [
+        {"word": "Hello", "start": 0.0, "end": 0.5},
+        {"word": "world.", "start": 0.6, "end": 1.2},
+    ]
+    verbose_result = VerboseTranscriptionResult(mock_segments, mock_words)
+
+    mock_diarization = [
+        {"speaker": "SPEAKER_00", "start": 0.0, "end": 1.5},
+    ]
+
+    with (
+        patch("agents.transcription._try_diarize", return_value=mock_diarization),
+        patch("agents.transcription._call_whisper_verbose", return_value=verbose_result),
+        patch("agents.transcription.Groq"),
+    ):
+        result = transcribe_audio(state)
+
+    assert result["transcript"] == "Hello world."
+    assert "transcript_words" in result
+    assert len(result["transcript_words"]) == 2
+    assert result["transcript_words"][0]["word"] == "Hello"
+    assert result["transcript_words"][0]["speaker"] == "SPEAKER_00"
+    assert result["transcript_words"][0]["start"] == 0.0
+    assert result["transcript_words"][0]["end"] == 0.5
+    assert result["transcript_words"][1]["word"] == "world."
+    assert result["transcript_words"][1]["speaker"] == "SPEAKER_00"
+

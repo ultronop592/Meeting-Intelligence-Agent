@@ -427,6 +427,7 @@ export default function MeetingDetailPage() {
               audioUrl={`${process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/meetings/${meetingId}/audio`}
               diarizedTranscript={data.meeting.diarized_transcript}
               plainTranscript={data.meeting.transcript}
+              transcriptWords={data.meeting.transcript_words}
             />
 
             <div className="rounded-[16px] border border-border bg-surface p-5">

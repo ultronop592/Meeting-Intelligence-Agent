@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Play, Pause, Volume2, VolumeX, RotateCcw, FastForward, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Play, Pause, Volume2, VolumeX, RotateCcw, FastForward, User, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { TranscriptWord } from "@/types/api";
 
 interface AudioPlayerProps {
   audioUrl: string;
   diarizedTranscript?: string | null;
   plainTranscript?: string | null;
+  transcriptWords?: TranscriptWord[] | null;
 }
 
 interface TranscriptLine {
@@ -17,8 +19,24 @@ interface TranscriptLine {
   approxStartSeconds: number;
 }
 
-export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: AudioPlayerProps) {
+interface WordGroup {
+  id: number;
+  speaker: string;
+  start: number;
+  end: number;
+  words: TranscriptWord[];
+}
+
+export function AudioPlayer({
+  audioUrl,
+  diarizedTranscript,
+  plainTranscript,
+  transcriptWords,
+}: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const activeItemRef = useRef<HTMLDivElement | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -26,33 +44,84 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
   const [isMuted, setIsMuted] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  // Parse lines into structured paragraphs with estimated start times
-  const lines: TranscriptLine[] = (diarizedTranscript || plainTranscript || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, idx, totalLines) => {
-      let speaker = "Speaker";
-      let text = line;
+  const hasWordTimestamps = Boolean(transcriptWords && transcriptWords.length > 0);
 
-      // Extract SPEAKER_XX or Name: prefix if present
-      const match = line.match(/^([A-Za-z0-9_ -]+):\s*(.*)$/);
-      if (match) {
-        speaker = match[1];
-        text = match[2];
+  // Group word-level timestamps into speaker blocks/phrases with exact start/end
+  const wordGroups: WordGroup[] = useMemo(() => {
+    if (!transcriptWords || transcriptWords.length === 0) return [];
+
+    const groups: WordGroup[] = [];
+    let currentGroup: TranscriptWord[] = [];
+    let currentSpeaker = transcriptWords[0]?.speaker || "Speaker";
+
+    transcriptWords.forEach((word) => {
+      const speaker = word.speaker || "Speaker";
+      const lastWord = currentGroup[currentGroup.length - 1];
+      const isNewSpeaker = speaker !== currentSpeaker;
+      const isLargeGap = lastWord && word.start - lastWord.end > 2.2;
+      const isSentenceBreak =
+        lastWord && /[.!?]$/.test(lastWord.word.trim()) && word.start - lastWord.end > 0.8;
+
+      if (
+        currentGroup.length > 0 &&
+        (isNewSpeaker || isLargeGap || isSentenceBreak || currentGroup.length >= 35)
+      ) {
+        groups.push({
+          id: groups.length,
+          speaker: currentSpeaker,
+          start: currentGroup[0].start,
+          end: currentGroup[currentGroup.length - 1].end,
+          words: currentGroup,
+        });
+        currentGroup = [word];
+        currentSpeaker = speaker;
+      } else {
+        currentGroup.push(word);
       }
-
-      // Estimate timestamp based on paragraph index vs total audio duration
-      const totalCount = totalLines.length || 1;
-      const approxStartSeconds = duration > 0 ? (idx / totalCount) * duration : idx * 10;
-
-      return {
-        id: idx,
-        speaker,
-        text,
-        approxStartSeconds,
-      };
     });
+
+    if (currentGroup.length > 0) {
+      groups.push({
+        id: groups.length,
+        speaker: currentSpeaker,
+        start: currentGroup[0].start,
+        end: currentGroup[currentGroup.length - 1].end,
+        words: currentGroup,
+      });
+    }
+
+    return groups;
+  }, [transcriptWords]);
+
+  // Fallback: Parse lines into structured paragraphs with estimated start times
+  const fallbackLines: TranscriptLine[] = useMemo(() => {
+    if (hasWordTimestamps) return [];
+    return (diarizedTranscript || plainTranscript || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, idx, totalLines) => {
+        let speaker = "Speaker";
+        let text = line;
+
+        // Extract SPEAKER_XX or Name: prefix if present
+        const match = line.match(/^([A-Za-z0-9_ -]+):\s*(.*)$/);
+        if (match) {
+          speaker = match[1];
+          text = match[2];
+        }
+
+        const totalCount = totalLines.length || 1;
+        const approxStartSeconds = duration > 0 ? (idx / totalCount) * duration : idx * 10;
+
+        return {
+          id: idx,
+          speaker,
+          text,
+          approxStartSeconds,
+        };
+      });
+  }, [diarizedTranscript, plainTranscript, duration, hasWordTimestamps]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -82,7 +151,10 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setHasError(true));
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setHasError(true));
     }
   };
 
@@ -112,12 +184,32 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Find currently active transcript line
-  const activeLineIndex = lines.findIndex((line, i) => {
-    const nextLine = lines[i + 1];
-    const nextStart = nextLine ? nextLine.approxStartSeconds : duration || Infinity;
-    return currentTime >= line.approxStartSeconds && currentTime < nextStart;
-  });
+  // Find currently active word group or fallback line
+  const activeGroupIndex = hasWordTimestamps
+    ? wordGroups.findIndex((g, i) => {
+        const nextGroup = wordGroups[i + 1];
+        const nextStart = nextGroup ? nextGroup.start : duration || Infinity;
+        return currentTime >= g.start && currentTime < nextStart;
+      })
+    : -1;
+
+  const activeLineIndex = !hasWordTimestamps
+    ? fallbackLines.findIndex((line, i) => {
+        const nextLine = fallbackLines[i + 1];
+        const nextStart = nextLine ? nextLine.approxStartSeconds : duration || Infinity;
+        return currentTime >= line.approxStartSeconds && currentTime < nextStart;
+      })
+    : -1;
+
+  // Auto-scroll active block into view during playback
+  useEffect(() => {
+    if (isPlaying && activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [activeGroupIndex, activeLineIndex, isPlaying]);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl backdrop-blur-sm">
@@ -126,14 +218,24 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
       <div className="flex flex-col gap-4">
         {/* Top Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="relative flex h-3 w-3">
               {isPlaying && (
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
               )}
-              <span className={`relative inline-flex h-3 w-3 rounded-full ${isPlaying ? "bg-cyan-500" : "bg-slate-600"}`} />
+              <span
+                className={`relative inline-flex h-3 w-3 rounded-full ${
+                  isPlaying ? "bg-cyan-500" : "bg-slate-600"
+                }`}
+              />
             </span>
             <h3 className="font-semibold text-slate-100">Audio Playback & Transcript Sync</h3>
+            {hasWordTimestamps ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-medium text-cyan-400 border border-cyan-500/25">
+                <Sparkles className="h-3 w-3" />
+                Word-Accurate Whisper Sync
+              </span>
+            ) : null}
           </div>
           <span className="text-xs text-slate-400 font-mono">
             {formatTime(currentTime)} / {formatTime(duration)}
@@ -162,7 +264,11 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
               disabled={hasError}
               className="h-9 px-4 bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300"
             >
-              {isPlaying ? <Pause className="h-4 w-4 mr-1.5" /> : <Play className="h-4 w-4 mr-1.5 fill-current" />}
+              {isPlaying ? (
+                <Pause className="h-4 w-4 mr-1.5" />
+              ) : (
+                <Play className="h-4 w-4 mr-1.5 fill-current" />
+              )}
               {isPlaying ? "Pause" : "Play Audio"}
             </Button>
 
@@ -221,14 +327,79 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
           </p>
         )}
 
-        {/* Synchronized Interactive Transcript */}
-        {lines.length > 0 && (
-          <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-800/80 bg-slate-950/80 p-4 space-y-2.5 scrollbar-thin">
-            {lines.map((line, idx) => {
+        {/* Synchronized Interactive Transcript (Word-Level Karaoke Mode) */}
+        {hasWordTimestamps && wordGroups.length > 0 && (
+          <div
+            ref={containerRef}
+            className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-800/80 bg-slate-950/80 p-4 space-y-2.5 scrollbar-thin"
+          >
+            {wordGroups.map((group, idx) => {
+              const isActiveGroup = idx === activeGroupIndex;
+              return (
+                <div
+                  key={group.id}
+                  ref={isActiveGroup ? activeItemRef : null}
+                  className={`group flex items-start gap-3 rounded-lg p-2.5 transition-all duration-200 ${
+                    isActiveGroup
+                      ? "bg-cyan-500/10 border-l-4 border-cyan-400 shadow-md shadow-cyan-950/30"
+                      : "hover:bg-slate-900/60 border-l-4 border-transparent"
+                  }`}
+                >
+                  <div className="mt-0.5 shrink-0 flex items-center gap-1.5 text-xs font-medium text-cyan-400/90">
+                    <User className="h-3.5 w-3.5" />
+                    <span className="font-mono bg-slate-900 px-1.5 py-0.5 rounded text-[11px]">
+                      {group.speaker}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 min-w-0 leading-relaxed text-sm">
+                    {group.words.map((w, wIdx) => {
+                      const isWordActive = currentTime >= w.start && currentTime <= w.end;
+                      const isPast = currentTime > w.end;
+                      return (
+                        <span
+                          key={wIdx}
+                          onClick={() => handleSeek(w.start)}
+                          className={`inline-block mx-0.5 px-1 py-0.5 rounded cursor-pointer transition-all duration-150 ${
+                            isWordActive
+                              ? "bg-cyan-400 text-slate-950 font-bold shadow-md shadow-cyan-400/50 scale-105"
+                              : isPast
+                              ? "text-cyan-100 hover:text-cyan-300 hover:bg-slate-800/80"
+                              : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                          }`}
+                          title={`${formatTime(w.start)} - ${formatTime(w.end)} (Click to jump)`}
+                        >
+                          {w.word}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => handleSeek(group.start)}
+                    className="text-[10px] font-mono text-slate-500 hover:text-cyan-400 opacity-60 group-hover:opacity-100 transition-opacity"
+                    title="Jump to start of this turn"
+                  >
+                    {formatTime(group.start)}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Fallback Line-Level Transcript when Word Timestamps are not available */}
+        {!hasWordTimestamps && fallbackLines.length > 0 && (
+          <div
+            ref={containerRef}
+            className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-800/80 bg-slate-950/80 p-4 space-y-2.5 scrollbar-thin"
+          >
+            {fallbackLines.map((line, idx) => {
               const isActive = idx === activeLineIndex;
               return (
                 <div
                   key={line.id}
+                  ref={isActive ? activeItemRef : null}
                   onClick={() => handleSeek(line.approxStartSeconds)}
                   className={`group flex items-start gap-3 rounded-lg p-2.5 cursor-pointer transition-all duration-200 ${
                     isActive
@@ -244,7 +415,11 @@ export function AudioPlayer({ audioUrl, diarizedTranscript, plainTranscript }: A
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm leading-relaxed ${isActive ? "text-cyan-100 font-medium" : "text-slate-300"}`}>
+                    <p
+                      className={`text-sm leading-relaxed ${
+                        isActive ? "text-cyan-100 font-medium" : "text-slate-300"
+                      }`}
+                    >
                       {line.text}
                     </p>
                   </div>
