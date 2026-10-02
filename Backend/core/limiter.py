@@ -30,17 +30,21 @@ _redis_url   = settings.upstash_redis_rest_url.strip()
 _redis_token = settings.upstash_redis_rest_token.strip()
 
 if _redis_url and _redis_token:
-    # Build a standard redis:// URI that slowapi's storage backend understands.
+    # Build a secure rediss:// (TLS) URI that slowapi's storage backend understands.
     # Upstash REST URLs look like: https://<id>.upstash.io
-    # We convert to: redis://:<token>@<host>:6379
+    # We convert to: rediss://default:<token>@<host>:6379
     try:
         _host = _redis_url.replace("https://", "").replace("http://", "").rstrip("/")
-        _storage_uri = f"redis://:{_redis_token}@{_host}:6379"
-        limiter = Limiter(
+        _storage_uri = f"rediss://default:{_redis_token}@{_host}:6379"
+        _limiter = Limiter(
             key_func=get_remote_address,
             default_limits=["120/minute"],
             storage_uri=_storage_uri,
         )
+        # Verify connectivity to Upstash Redis
+        if not getattr(_limiter._limiter, "storage", None) or not _limiter._limiter.storage.check():
+            raise ConnectionError(f"Could not connect to Upstash Redis at {_host}:6379")
+        limiter = _limiter
         logger.info("Rate limiter: using Upstash Redis backend (%s)", _host)
     except Exception as _exc:
         logger.warning(

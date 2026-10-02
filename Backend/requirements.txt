@@ -41,11 +41,13 @@ slack-sdk==3.34.0                  # Slack (Node 7)
 
 # --- Job queue & Object Storage ---------------------------------------------
 upstash-redis==1.1.0      # Background processing for large audio files
+redis>=5.0.0              # Required by slowapi/limits for persistent Redis rate limiting
 boto3==1.36.1             # Cloudflare R2 / AWS S3 object storage for audio files
 
 # --- HTTP / Async ------------------------------------------------------------
 httpx==0.28.1
 requests==2.32.3
+chardet>=3.0.2,<6.0.0     # Pinned (<6.0.0) to satisfy requests 2.32 compatibility assertion
 aiofiles==24.1.0
 
 # --- Utilities ---------------------------------------------------------------
