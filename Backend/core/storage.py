@@ -48,12 +48,13 @@ class StorageService:
             import boto3
             from botocore.config import Config
 
+            addressing_style = "path" if settings.s3_endpoint_url else "virtual"
             client_kwargs = {
                 "service_name": "s3",
                 "aws_access_key_id": settings.s3_access_key_id.strip(),
                 "aws_secret_access_key": settings.s3_secret_access_key.strip(),
                 "region_name": settings.s3_region_name.strip() or "auto",
-                "config": Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+                "config": Config(signature_version="s3v4", s3={"addressing_style": addressing_style}),
             }
 
             if settings.s3_endpoint_url and settings.s3_endpoint_url.strip():

@@ -77,3 +77,21 @@ async def test_s3_storage_configured(temp_audio_file):
             Params={"Bucket": "test-bucket", "Key": "audio/user1/test.mp3"},
             ExpiresIn=1800,
         )
+
+
+def test_s3_path_style_for_custom_endpoint():
+    """Verify that path-style addressing is configured for custom endpoints (Supabase/MinIO)."""
+    service = StorageService()
+
+    with patch.object(settings, "storage_backend", "s3"), \
+         patch.object(settings, "s3_bucket_name", "test-bucket"), \
+         patch.object(settings, "s3_access_key_id", "test-key-id"), \
+         patch.object(settings, "s3_secret_access_key", "test-secret-key"), \
+         patch.object(settings, "s3_endpoint_url", "https://custom.storage.supabase.co/s3"), \
+         patch("boto3.client") as mock_boto:
+
+        client = service._get_s3_client()
+        mock_boto.assert_called_once()
+        _, kwargs = mock_boto.call_args
+        assert kwargs["config"].s3["addressing_style"] == "path"
+
