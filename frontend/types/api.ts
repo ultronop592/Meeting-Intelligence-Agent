@@ -87,8 +87,37 @@ export type MeetingRow = {
   transcript?: string | null;
   diarized_transcript?: string | null;
   transcript_words?: TranscriptWord[] | null;
+  share_token?: string | null;
+  share_token_expires_at?: string | null;
+  is_publicly_shared?: boolean;
   embedding_status: "pending" | "completed" | "failed";
   created_at: string | null;
+};
+
+export type ShareLinkResponse = {
+  meeting_id: string;
+  share_token?: string | null;
+  share_url?: string | null;
+  is_publicly_shared: boolean;
+  expires_at?: string | null;
+};
+
+export type PublicMeetingResponse = {
+  title: string;
+  audio_filename: string;
+  duration_minutes: number;
+  short_summary: string;
+  detailed_summary: string;
+  transcript?: string | null;
+  diarized_transcript?: string | null;
+  transcript_words?: TranscriptWord[] | null;
+  action_items: ActionItemRow[];
+  decisions: DecisionRow[];
+  participants: ParticipantRow[];
+  created_at?: string | null;
+  audio_stream_url?: string | null;
+  expires_at?: string | null;
+  is_expired?: boolean;
 };
 
 export type ActionItemRow = {
@@ -114,6 +143,7 @@ export type ParticipantRow = {
   meeting_id: string;
   name: string;
   email: string | null;
+  speaker_label?: string | null;
 };
 
 export type NotificationLogRow = {

@@ -196,6 +196,9 @@ class MeetingRow(BaseModel):
     transcript:          Optional[str]       = None
     diarized_transcript: Optional[str]       = None
     transcript_words:    Optional[list[dict]]= None
+    share_token:            Optional[str]       = None
+    share_token_expires_at: Optional[datetime]  = None
+    is_publicly_shared:     bool                = False
     embedding_status: EmbeddingStatus     = EmbeddingStatus.PENDING
     created_at:       Optional[datetime]  = None
  
@@ -280,6 +283,39 @@ class MeetingDetailResponse(BaseModel):
     decisions:     list[DecisionRow]
     participants:  list[ParticipantRow]
     notifications: list[NotificationLogRow]
+
+
+class ShareLinkCreateRequest(BaseModel):
+    """POST /meetings/{id}/share"""
+    expires_in_days: Optional[int] = Field(default=None, ge=1, le=365)
+
+
+class ShareLinkResponse(BaseModel):
+    """Response for share link generation/retrieval"""
+    meeting_id: str
+    share_token: Optional[str] = None
+    share_url: Optional[str] = None
+    is_publicly_shared: bool = False
+    expires_at: Optional[datetime] = None
+
+
+class PublicMeetingResponse(BaseModel):
+    """GET /public/share/{token} - Sanitized unauthenticated view"""
+    title:               str
+    audio_filename:      str
+    duration_minutes:    int
+    short_summary:       str
+    detailed_summary:    str
+    transcript:          Optional[str]        = None
+    diarized_transcript: Optional[str]        = None
+    transcript_words:    Optional[list[dict]] = None
+    action_items:        list[ActionItemRow]  = Field(default_factory=list)
+    decisions:           list[DecisionRow]    = Field(default_factory=list)
+    participants:        list[ParticipantRow] = Field(default_factory=list)
+    created_at:          Optional[datetime]   = None
+    audio_stream_url:    Optional[str]        = None
+    expires_at:          Optional[datetime]   = None
+    is_expired:          bool                 = False
  
  
 class MeetingListItem(BaseModel):

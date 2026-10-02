@@ -22,12 +22,13 @@ Endpoints:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 from pathlib import Path
+import secrets
 import time
-from typing import Any
+from typing import Any, Optional
 import uuid
 
 from fastapi import (
@@ -86,6 +87,9 @@ from models.schemas import (
     ParticipantRow,
     Priority,
     ProcessMeetingRequest,
+    PublicMeetingResponse,
+    ShareLinkCreateRequest,
+    ShareLinkResponse,
     UpdateActionItemRequest,
 )
 from tools.calender_tool import send_calendar_for_meeting
@@ -977,6 +981,248 @@ async def update_speaker_mapping(
             for p in updated_parts
         ],
     }
+
+
+# =============================================================================
+# Public Share Links (Unauthenticated Stakeholder Access)
+# =============================================================================
+
+@meetings_router.post(
+    "/meetings/{meeting_id}/share",
+    response_model=ShareLinkResponse,
+    summary="Create or update public share link for a meeting",
+)
+async def create_or_update_share_link(
+    meeting_id: str,
+    payload: Optional[ShareLinkCreateRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate or update an unauthenticated public share link with optional expiration."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    verify_meeting_ownership(meeting, current_user)
+
+    if not meeting.share_token:
+        meeting.share_token = f"sh_{secrets.token_urlsafe(18)}"
+
+    if payload and payload.expires_in_days:
+        meeting.share_token_expires_at = datetime.now(timezone.utc) + timedelta(days=payload.expires_in_days)
+    elif payload and payload.expires_in_days is None:
+        meeting.share_token_expires_at = None
+
+    meeting.is_publicly_shared = True
+    await db.commit()
+    await db.refresh(meeting)
+
+    share_url = f"/share/{meeting.share_token}"
+    logger.info("Public share link active for meeting %s (token: %s)", meeting.id, meeting.share_token)
+
+    return ShareLinkResponse(
+        meeting_id=meeting.id,
+        share_token=meeting.share_token,
+        share_url=share_url,
+        is_publicly_shared=meeting.is_publicly_shared,
+        expires_at=meeting.share_token_expires_at,
+    )
+
+
+@meetings_router.get(
+    "/meetings/{meeting_id}/share",
+    response_model=ShareLinkResponse,
+    summary="Get current share link status for a meeting",
+)
+async def get_meeting_share_link(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve the current share link status and URL for the specified meeting."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    verify_meeting_ownership(meeting, current_user)
+
+    share_url = f"/share/{meeting.share_token}" if meeting.share_token else None
+    return ShareLinkResponse(
+        meeting_id=meeting.id,
+        share_token=meeting.share_token,
+        share_url=share_url,
+        is_publicly_shared=bool(meeting.is_publicly_shared),
+        expires_at=meeting.share_token_expires_at,
+    )
+
+
+@meetings_router.delete(
+    "/meetings/{meeting_id}/share",
+    summary="Revoke public share link for a meeting",
+)
+async def revoke_meeting_share_link(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deactivate public sharing for a meeting immediately."""
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    verify_meeting_ownership(meeting, current_user)
+
+    meeting.is_publicly_shared = False
+    await db.commit()
+    logger.info("Public share link revoked for meeting %s", meeting.id)
+    return {
+        "meeting_id": meeting_id,
+        "is_publicly_shared": False,
+        "message": "Share link revoked successfully",
+    }
+
+
+@meetings_router.get(
+    "/public/share/{share_token}",
+    response_model=PublicMeetingResponse,
+    summary="Retrieve sanitized meeting details using an unauthenticated public share link",
+)
+async def get_public_meeting_by_token(
+    share_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Unauthenticated public endpoint for stakeholders to view shared meeting details."""
+    query = select(Meeting).where(Meeting.share_token == share_token)
+    result = await db.execute(query)
+    meeting = result.scalar_one_or_none()
+
+    if not meeting or not meeting.is_publicly_shared:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This share link is inactive or invalid.",
+        )
+
+    now = datetime.now(timezone.utc)
+    if meeting.share_token_expires_at and now > meeting.share_token_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This share link has expired.",
+        )
+
+    # Load child entities
+    action_items_result = await db.execute(
+        select(DBActionItem).where(DBActionItem.meeting_id == meeting.id)
+    )
+    action_items = action_items_result.scalars().all()
+
+    decisions_result = await db.execute(
+        select(Decision).where(Decision.meeting_id == meeting.id)
+    )
+    decisions = decisions_result.scalars().all()
+
+    participants_result = await db.execute(
+        select(Participant).where(Participant.meeting_id == meeting.id)
+    )
+    participants = participants_result.scalars().all()
+
+    audio_stream_url = f"/api/public/share/{share_token}/audio"
+
+    return PublicMeetingResponse(
+        title=meeting.title,
+        audio_filename=meeting.audio_filename,
+        duration_minutes=meeting.duration_minutes,
+        short_summary=meeting.short_summary,
+        detailed_summary=meeting.detailed_summary,
+        transcript=meeting.transcript,
+        diarized_transcript=meeting.diarized_transcript,
+        transcript_words=meeting.transcript_words,
+        action_items=[ActionItemRow.model_validate(a) for a in action_items],
+        decisions=[DecisionRow.model_validate(d) for d in decisions],
+        participants=[ParticipantRow.model_validate(p) for p in participants],
+        created_at=meeting.created_at,
+        audio_stream_url=audio_stream_url,
+        expires_at=meeting.share_token_expires_at,
+        is_expired=False,
+    )
+
+
+@meetings_router.get(
+    "/public/share/{share_token}/audio",
+    summary="Stream meeting audio for a valid public share link without authentication",
+)
+async def stream_public_share_audio(
+    share_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream audio for a shared meeting directly via S3 presigned URL or local disk."""
+    query = select(Meeting).where(Meeting.share_token == share_token)
+    result = await db.execute(query)
+    meeting = result.scalar_one_or_none()
+
+    if not meeting or not meeting.is_publicly_shared:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share link is invalid or disabled.",
+        )
+
+    now = datetime.now(timezone.utc)
+    if meeting.share_token_expires_at and now > meeting.share_token_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Share link has expired.",
+        )
+
+    # 1. Presigned S3/Supabase URL
+    if getattr(meeting, "audio_storage_key", None):
+        presigned_url = await storage_service.get_presigned_url(meeting.audio_storage_key)
+        if presigned_url:
+            return RedirectResponse(
+                url=presigned_url,
+                status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                headers={"Cache-Control": "private, max-age=3600"},
+            )
+
+    # 2. Local fallback
+    possible_paths = []
+    if getattr(meeting, "audio_storage_key", None):
+        possible_paths.append(os.path.join(settings.upload_dir, meeting.audio_storage_key))
+
+    possible_paths.append(os.path.join(settings.upload_dir, meeting.audio_filename))
+    if os.path.exists(settings.upload_dir):
+        for fname in os.listdir(settings.upload_dir):
+            if fname.endswith(meeting.audio_filename) or meeting.audio_filename in fname:
+                possible_paths.insert(0, os.path.join(settings.upload_dir, fname))
+
+    found_path = None
+    for path in possible_paths:
+        if os.path.exists(path) and os.path.isfile(path):
+            found_path = path
+            break
+
+    if not found_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audio recording for meeting '{meeting.title}' is not available.",
+        )
+
+    ext = Path(found_path).suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".webm": "audio/webm",
+        ".mp4": "video/mp4",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=found_path,
+        media_type=media_type,
+        filename=meeting.audio_filename,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
 
 
 @meetings_router.get("/health/detailed", tags=["health"])

@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { AudioPlayer } from "@/components/meeting/audio-player";
-import { Bell, Download, Loader2 } from "lucide-react";
+import { ShareModal } from "@/components/meeting/share-modal";
+import { Bell, Download, Loader2, Share2 } from "lucide-react";
 import type { ChatMessage } from "@/types/api";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
@@ -42,6 +43,7 @@ export default function MeetingDetailPage() {
   const meetingId = typeof params?.id === "string" ? params.id : null;
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
   const { streamQuery, isStreaming } = useAgentChatStream();
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean; sources?: string[] }[]>([]);
   const [daysFromNow, setDaysFromNow] = useState(7);
@@ -385,6 +387,15 @@ export default function MeetingDetailPage() {
               <h2 className="mt-2 text-xl font-semibold text-foreground">{title}</h2>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsShareModalOpen(true)}
+                className="gap-1.5 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Share
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -760,6 +771,15 @@ export default function MeetingDetailPage() {
           </Button>
         </div>
       </div>
+
+      {meetingId && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          meetingId={meetingId}
+          meetingTitle={title}
+        />
+      )}
     </div>
   );
 }

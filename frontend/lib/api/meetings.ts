@@ -22,6 +22,8 @@ import type {
   ToolName,
   ToolStatusResponse,
   TestConnectionResponse,
+  ShareLinkResponse,
+  PublicMeetingResponse,
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
@@ -188,6 +190,24 @@ export const meetingApi = {
         method: "PATCH",
       }
     ),
+
+  getShareLink: (meetingId: string) =>
+    apiRequest<ShareLinkResponse>(`/meetings/${meetingId}/share`),
+
+  createShareLink: (meetingId: string, expiresInDays?: number | null) =>
+    apiRequest<ShareLinkResponse>(`/meetings/${meetingId}/share`, {
+      method: "POST",
+      body: JSON.stringify({ expires_in_days: expiresInDays }),
+    }),
+
+  revokeShareLink: (meetingId: string) =>
+    apiRequest<{ meeting_id: string; is_publicly_shared: boolean; message: string }>(
+      `/meetings/${meetingId}/share`,
+      { method: "DELETE" }
+    ),
+
+  getPublicMeeting: (token: string) =>
+    apiRequest<PublicMeetingResponse>(`/public/share/${token}`),
 
   queryAgent: (payload: AgentQueryRequest) =>
     apiRequest<AgentQueryResponse>("/query", {

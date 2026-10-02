@@ -74,6 +74,11 @@ class Meeting(Base):
     diarized_transcript = Column(Text, nullable=True)
     transcript_words    = Column(JSON, nullable=True)
 
+    # Public sharing fields
+    share_token            = Column(String(64), unique=True, index=True, nullable=True)
+    share_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_publicly_shared     = Column(Boolean, default=False, nullable=False)
+
     # EmbeddingStatus — tracks RAG pipeline: pending → completed/failed
     # SAEnum maps the Python string values directly to a Postgres ENUM type
     embedding_status = Column(
