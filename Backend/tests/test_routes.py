@@ -450,6 +450,60 @@ async def test_upload_empty_file(authenticated_client):
     assert "Uploaded file is empty" in resp.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_transcribe_live_chunk_success(authenticated_client):
+    import io
+    from unittest.mock import patch
+
+    with patch("agents.transcription.transcribe_audio_chunk", return_value="Live meeting update"):
+        resp = await authenticated_client.post(
+            "/transcribe/live-chunk",
+            files={"file": ("chunk.webm", io.BytesIO(b"webm-chunk-binary-data"), "audio/webm")},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["text"] == "Live meeting update"
+    assert data["is_final"] is True
+    assert data["chunk_size_bytes"] > 0
+
+
+@pytest.mark.asyncio
+async def test_transcribe_live_chunk_empty_file(authenticated_client):
+    import io
+
+    resp = await authenticated_client.post(
+        "/transcribe/live-chunk",
+        files={"file": ("chunk.webm", io.BytesIO(b""), "audio/webm")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["text"] == ""
+    assert data["chunk_size_bytes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_transcribe_live_chunk_unsupported_format(authenticated_client):
+    import io
+
+    resp = await authenticated_client.post(
+        "/transcribe/live-chunk",
+        files={"file": ("document.txt", io.BytesIO(b"hello world"), "text/plain")},
+    )
+    assert resp.status_code == 400
+    assert "Unsupported file type" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_transcribe_live_chunk_unauthenticated(async_client):
+    import io
+
+    resp = await async_client.post(
+        "/transcribe/live-chunk",
+        files={"file": ("chunk.webm", io.BytesIO(b"audio-data"), "audio/webm")},
+    )
+    assert resp.status_code == 401
+
+
 # =============================================================================
 # Chat Sessions & Multi-Turn Memory Endpoints
 # =============================================================================

@@ -366,3 +366,46 @@ def test_transcribe_audio_provides_word_level_timestamps(tmp_path):
     assert result["transcript_words"][1]["word"] == "world."
     assert result["transcript_words"][1]["speaker"] == "SPEAKER_00"
 
+
+def test_transcribe_audio_chunk_empty_input():
+    from agents.transcription import transcribe_audio_chunk
+
+    assert transcribe_audio_chunk(b"") == ""
+    assert transcribe_audio_chunk(b"too-short") == ""
+
+
+def test_transcribe_audio_chunk_success():
+    from agents.transcription import transcribe_audio_chunk
+
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.return_value = "Good morning everyone"
+
+    with patch("agents.transcription.Groq", return_value=mock_client):
+        result = transcribe_audio_chunk(
+            audio_bytes=b"0" * 500,
+            filename="chunk.webm",
+            prompt="Standup update",
+        )
+
+    assert result == "Good morning everyone"
+    assert mock_client.audio.transcriptions.create.called
+    kwargs = mock_client.audio.transcriptions.create.call_args[1]
+    assert kwargs["language"] == "en"
+    assert kwargs["prompt"] == "Standup update"
+
+
+def test_transcribe_audio_chunk_handles_exception_gracefully():
+    from agents.transcription import transcribe_audio_chunk
+
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.side_effect = RuntimeError("Whisper timeout")
+
+    with patch("agents.transcription.Groq", return_value=mock_client):
+        result = transcribe_audio_chunk(
+            audio_bytes=b"0" * 500,
+            filename="chunk.webm",
+        )
+
+    assert result == ""
+
+
