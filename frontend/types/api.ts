@@ -376,3 +376,10 @@ export type CalendarCredentialPayload = {
   credentials_json?: string;
 };
 
+export type LiveChunkTranscriptionResponse = {
+  text: string;
+  is_final: boolean;
+  chunk_size_bytes: number;
+};
+
+

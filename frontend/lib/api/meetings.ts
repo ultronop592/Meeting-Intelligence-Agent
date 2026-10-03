@@ -24,6 +24,7 @@ import type {
   TestConnectionResponse,
   ShareLinkResponse,
   PublicMeetingResponse,
+  LiveChunkTranscriptionResponse,
 } from "@/types/api";
 import { apiRequest } from "@/lib/api/client";
 
@@ -380,7 +381,43 @@ export const meetingApi = {
 
   getDetailedHealth: () =>
     apiRequest<DetailedHealthResponse>("/health/detailed"),
+
+  transcribeLiveChunk: (chunkBlob: Blob, filename?: string, prompt?: string) =>
+    transcribeLiveChunk(chunkBlob, filename, prompt),
 };
+
+export async function transcribeLiveChunk(
+  chunkBlob: Blob,
+  filename = "chunk.webm",
+  prompt?: string
+): Promise<LiveChunkTranscriptionResponse> {
+  const form = new FormData();
+  form.append("file", chunkBlob, filename);
+
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const query = prompt ? `?prompt=${encodeURIComponent(prompt.slice(-200))}` : "";
+  const res = await fetch(`${API_BASE_URL}/transcribe/live-chunk${query}`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    let msg = `Live transcription failed with status ${res.status}`;
+    try {
+      const err = await res.json();
+      if (err?.detail) msg = err.detail;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return res.json() as Promise<LiveChunkTranscriptionResponse>;
+}
 
 export type GlobalSearchMeetingResult = {
   id: string;
