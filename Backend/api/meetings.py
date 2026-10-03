@@ -80,6 +80,7 @@ from models.schemas import (
     DecisionRow,
     DispatchMeetingRequest,
     DispatchMeetingResponse,
+    LiveTranscriptionChunkResponse,
     MeetingDetailResponse,
     MeetingListItem,
     MeetingRow,
@@ -160,6 +161,56 @@ async def upload_audio(request: Request, file: UploadFile = File(...), current_u
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
     }
+
+
+@meetings_router.post(
+    "/transcribe/live-chunk",
+    response_model=LiveTranscriptionChunkResponse,
+    summary="Transcribe audio chunk for live feedback",
+    description="Transcribe an in-browser live audio recording chunk (WebM/MP4/WAV) to stream real-time text feedback.",
+)
+@limiter.limit("60/minute")
+async def transcribe_live_chunk_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+    prompt: Optional[str] = Query(default=None, description="Previous transcript context prompt"),
+    current_user: User = Depends(get_current_user),
+):
+    """Receive a short audio chunk from the browser and return transcribed text in real-time."""
+    from agents.transcription import transcribe_audio_chunk
+
+    lower_name = (file.filename or "").lower()
+    suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(file.filename or "").suffix.lower()
+    if suffix and suffix not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {suffix}",
+        )
+
+    content = await file.read()
+    await file.close()
+
+    if not content:
+        return LiveTranscriptionChunkResponse(text="", is_final=True, chunk_size_bytes=0)
+
+    # Restrict chunk size to 10 MB to prevent abuse
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Live audio chunk exceeds maximum 10 MB limit",
+        )
+
+    text = transcribe_audio_chunk(
+        audio_bytes=content,
+        filename=file.filename or "chunk.webm",
+        prompt=prompt,
+    )
+
+    return LiveTranscriptionChunkResponse(
+        text=text,
+        is_final=True,
+        chunk_size_bytes=len(content),
+    )
 
 
 async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str | None = None):

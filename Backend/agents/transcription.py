@@ -48,7 +48,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from groq import APIConnectionError, APIError, APITimeoutError, Groq, RateLimitError
 from langsmith import traceable
@@ -676,3 +676,62 @@ def transcribe_audio(state: AgentState) -> dict:
                 ]
             }
         return {"errors": state.errors + [f"Unexpected transcription failure: {e}"]}
+
+
+def transcribe_audio_chunk(
+    audio_bytes: bytes,
+    filename: str = "chunk.webm",
+    prompt: Optional[str] = None,
+) -> str:
+    """Transcribe a small audio chunk (e.g. 2-10s) using Groq Whisper.
+
+    Designed for real-time live streaming feedback during in-browser recording.
+
+    Args:
+        audio_bytes: Raw binary audio bytes (WebM, MP4, WAV, OGG).
+        filename: Original or synthetic filename used for container detection.
+        prompt: Optional context prompt to guide spelling / continuation.
+
+    Returns:
+        Transcribed text string (empty string if audio is silent or below threshold).
+    """
+    if not audio_bytes or len(audio_bytes) < 100:
+        return ""
+
+    if not settings.groq_api_key or settings.groq_api_key.startswith("gsk_placeholder"):
+        logger.debug("transcribe_audio_chunk: groq_api_key not configured or placeholder")
+        return ""
+
+    client = Groq(api_key=settings.groq_api_key)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_FORMATS:
+        suffix = ".webm"
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = Path(tmp.name)
+
+    try:
+        with open(tmp_path, "rb") as f:
+            kwargs: dict[str, Any] = {
+                "model": WHISPER_MODEL,
+                "file": f,
+                "response_format": "text",
+                "language": "en",
+                "temperature": 0.0,
+            }
+            if prompt:
+                kwargs["prompt"] = prompt[:200]
+            res = client.audio.transcriptions.create(**kwargs)
+            text = res.strip() if isinstance(res, str) else getattr(res, "text", "").strip()
+            return text
+    except Exception as exc:
+        logger.warning("transcribe_audio_chunk error: %s", exc)
+        return ""
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+

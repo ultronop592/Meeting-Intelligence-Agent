@@ -492,4 +492,12 @@ class DispatchMeetingRequest(BaseModel):
 class DispatchMeetingResponse(BaseModel):
     meeting_id: str
     results: dict[str, Any] = Field(default_factory=dict)
+
+
+class LiveTranscriptionChunkResponse(BaseModel):
+    """Real-time live audio chunk transcription feedback."""
+    text: str = Field(default="", description="Transcribed text for this audio chunk.")
+    is_final: bool = Field(default=True, description="Whether this chunk transcription is finalized.")
+    chunk_size_bytes: int = Field(default=0, description="Size of uploaded audio chunk in bytes.")
+
 
