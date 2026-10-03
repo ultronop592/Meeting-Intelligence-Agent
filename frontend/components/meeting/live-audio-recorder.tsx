@@ -1,24 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Check,
+  Copy,
   Disc3,
+  Download,
+  FileText,
   Mic,
-  MicOff,
   Pause,
   Play,
+  Radio,
   RotateCcw,
   Sparkles,
   Square,
   Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLiveTranscription } from "@/lib/hooks/use-live-transcription";
 import { cn } from "@/lib/utils";
 
 type LiveAudioRecorderProps = {
-  onRecordingComplete: (file: File) => void;
+  onRecordingComplete: (file: File, liveTranscript?: string) => void;
   disabled?: boolean;
 };
 
@@ -34,6 +38,7 @@ export function LiveAudioRecorder({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioFileSizeMb, setAudioFileSizeMb] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -43,6 +48,20 @@ export function LiveAudioRecorder({
   const animationFrameRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Live streaming speech transcription hook
+  const liveTrans = useLiveTranscription({
+    language: "en-US",
+    onError: (err) => console.warn("Live transcription error:", err),
+  });
+
+  const stopTracks = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
 
   // Clean up on unmount
   useEffect(() => {
@@ -57,14 +76,14 @@ export function LiveAudioRecorder({
         URL.revokeObjectURL(audioUrl);
       }
     };
-  }, [audioUrl]);
+  }, [audioUrl, stopTracks]);
 
-  const stopTracks = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+  // Auto-scroll transcript viewport as new text arrives
+  useEffect(() => {
+    if (transcriptScrollRef.current) {
+      transcriptScrollRef.current.scrollTop = transcriptScrollRef.current.scrollHeight;
     }
-  };
+  }, [liveTrans.transcript, liveTrans.interimText]);
 
   const drawWaveform = () => {
     if (!canvasRef.current || !analyserRef.current) return;
@@ -126,7 +145,9 @@ export function LiveAudioRecorder({
       streamRef.current = stream;
 
       // Audio analysis for real-time waveform visualization
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioCtx = new AudioCtx();
       audioContextRef.current = audioCtx;
       const analyser = audioCtx.createAnalyser();
@@ -150,6 +171,10 @@ export function LiveAudioRecorder({
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          // When in server-stream fallback mode, feed chunks to backend Whisper
+          if (liveTrans.engine === "server-stream") {
+            liveTrans.processAudioChunk(event.data);
+          }
         }
       };
 
@@ -168,10 +193,14 @@ export function LiveAudioRecorder({
         setState("stopped");
       };
 
-      mediaRecorder.start(250); // Emit chunks every 250ms
+      // Start recording with 1000ms chunk slices
+      mediaRecorder.start(1000);
       setState("recording");
 
-      // Start timer
+      // Start real-time speech transcription
+      liveTrans.startListening();
+
+      // Start duration timer
       timerRef.current = window.setInterval(() => {
         setDurationSeconds((sec) => sec + 1);
       }, 1000);
@@ -198,6 +227,7 @@ export function LiveAudioRecorder({
         window.clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      liveTrans.pauseListening();
       setState("paused");
     }
   };
@@ -208,6 +238,7 @@ export function LiveAudioRecorder({
       timerRef.current = window.setInterval(() => {
         setDurationSeconds((sec) => sec + 1);
       }, 1000);
+      liveTrans.resumeListening();
       setState("recording");
     }
   };
@@ -219,6 +250,7 @@ export function LiveAudioRecorder({
         window.clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      liveTrans.stopListening();
     }
   };
 
@@ -234,6 +266,7 @@ export function LiveAudioRecorder({
     setAudioFileSizeMb(null);
     setDurationSeconds(0);
     setErrorMessage(null);
+    liveTrans.clearTranscript();
     setState("idle");
   };
 
@@ -246,7 +279,27 @@ export function LiveAudioRecorder({
     const fileName = `live-recording-${dateStr}-${timeStr}.${ext}`;
 
     const file = new File([audioBlob], fileName, { type: audioBlob.type });
-    onRecordingComplete(file);
+    onRecordingComplete(file, liveTrans.fullTranscript);
+  };
+
+  const handleCopyTranscript = () => {
+    if (!liveTrans.fullTranscript) return;
+    navigator.clipboard.writeText(liveTrans.fullTranscript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadTranscript = () => {
+    if (!liveTrans.fullTranscript) return;
+    const blob = new Blob([liveTrans.fullTranscript], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `meeting-transcript-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const formatTime = (totalSeconds: number) => {
@@ -265,9 +318,9 @@ export function LiveAudioRecorder({
           <div className="flex items-center gap-2.5">
             <div
               className={cn(
-                "flex h-9 w-9 items-center justify-center rounded-xl",
+                "flex h-9 w-9 items-center justify-center rounded-xl transition-all",
                 state === "recording"
-                  ? "bg-red-500/10 text-red-500 animate-pulse"
+                  ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 animate-pulse"
                   : state === "paused"
                   ? "bg-amber-500/10 text-amber-500"
                   : state === "stopped"
@@ -282,12 +335,20 @@ export function LiveAudioRecorder({
               )}
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Live Meeting Recorder
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Live Meeting Recorder
+                </h3>
+                {state === "recording" && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded-full border border-red-500/20">
+                    <Radio className="h-2.5 w-2.5 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-text-secondary">
-                {state === "idle" && "Capture audio directly from your microphone"}
-                {state === "recording" && "Recording in progress..."}
+                {state === "idle" && "Capture audio directly with real-time live transcription"}
+                {state === "recording" && "Recording in progress & streaming live transcription..."}
                 {state === "paused" && "Recording paused"}
                 {state === "stopped" && "Recording ready to process"}
               </p>
@@ -331,33 +392,119 @@ export function LiveAudioRecorder({
         )}
 
         {/* Dynamic Display Area */}
-        <div className="mt-4 flex min-h-[120px] flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-surface-2/60 p-4">
+        <div className="mt-4 flex min-h-[140px] flex-col rounded-xl border border-dashed border-border/80 bg-surface-2/60 p-4">
           {state === "idle" && (
-            <div className="text-center space-y-2">
-              <p className="text-xs text-text-tertiary">
-                Click below to start recording. Audio will be transcribed with Groq Whisper and analyzed by the intelligence agent.
-              </p>
+            <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent">
+                <Mic className="h-6 w-6" />
+              </div>
+              <div className="max-w-md space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  Ready to record meeting
+                </p>
+                <p className="text-xs text-text-tertiary">
+                  Audio is transcribed in real-time as you speak and analyzed by the meeting intelligence agent.
+                </p>
+              </div>
               <Button
                 id="btn-start-recording"
                 type="button"
                 onClick={startRecording}
                 disabled={disabled}
-                className="mt-2 inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-medium"
+                className="mt-2 inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-medium shadow-md shadow-red-600/20"
               >
                 <Mic className="h-4 w-4" />
-                Start Recording
+                Start Live Recording
               </Button>
             </div>
           )}
 
           {(state === "recording" || state === "paused") && (
             <div className="w-full space-y-3">
+              {/* Waveform Canvas */}
               <canvas
                 ref={canvasRef}
                 width={360}
-                height={60}
-                className="w-full rounded-lg bg-surface/80"
+                height={48}
+                className="w-full rounded-lg bg-surface/90 border border-border/50"
               />
+
+              {/* Live Streaming Transcription Viewport */}
+              <div className="rounded-xl border border-border/80 bg-surface/90 p-3.5 shadow-inner">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 relative">
+                      <span
+                        className={cn(
+                          "absolute inline-flex h-full w-full rounded-full opacity-75",
+                          state === "recording" ? "bg-red-400 animate-ping" : "bg-amber-400"
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "relative inline-flex rounded-full h-2 w-2",
+                          state === "recording" ? "bg-red-500" : "bg-amber-500"
+                        )}
+                      />
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                      Live Transcription Stream
+                    </span>
+                    <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                      {liveTrans.engine === "web-speech"
+                        ? "Web Speech • 0ms"
+                        : "Whisper Stream"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-text-tertiary font-mono">
+                      {liveTrans.wordCount} words
+                    </span>
+                    {liveTrans.fullTranscript && (
+                      <button
+                        type="button"
+                        onClick={handleCopyTranscript}
+                        className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-foreground transition-colors"
+                        title="Copy live text"
+                      >
+                        {copied ? (
+                          <Check className="h-3 w-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Streaming Text Container */}
+                <div
+                  ref={transcriptScrollRef}
+                  className="max-h-[110px] min-h-[64px] overflow-y-auto text-xs leading-relaxed text-foreground/90 pr-1 select-text scroll-smooth"
+                >
+                  {liveTrans.fullTranscript ? (
+                    <p className="whitespace-pre-wrap break-words">
+                      <span>{liveTrans.transcript}</span>
+                      {liveTrans.interimText && (
+                        <span className="text-accent/90 italic ml-1">
+                          {liveTrans.interimText}
+                        </span>
+                      )}
+                      {state === "recording" && (
+                        <span className="inline-block w-1.5 h-3 ml-0.5 bg-accent animate-pulse align-middle" />
+                      )}
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2 py-4 text-text-tertiary italic justify-center">
+                      <Disc3 className="h-3.5 w-3.5 animate-spin text-accent" />
+                      <span>Listening... speak into your microphone for real-time text feedback.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Controls */}
               <div className="flex items-center justify-center gap-3 pt-1">
                 {state === "recording" ? (
                   <Button
@@ -390,7 +537,7 @@ export function LiveAudioRecorder({
                   type="button"
                   size="sm"
                   onClick={stopRecording}
-                  className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+                  className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white shadow-xs"
                 >
                   <Square className="h-3.5 w-3.5" />
                   Stop Recording
@@ -413,9 +560,9 @@ export function LiveAudioRecorder({
           {state === "stopped" && audioUrl && (
             <div className="w-full space-y-3">
               <div className="flex items-center justify-between text-xs text-text-secondary">
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 font-medium">
                   <Volume2 className="h-3.5 w-3.5 text-accent" />
-                  Recording Preview
+                  Audio Recording Preview
                 </span>
                 <span>
                   {formatTime(durationSeconds)} • {audioFileSizeMb ?? 0} MB
@@ -427,6 +574,49 @@ export function LiveAudioRecorder({
                 src={audioUrl}
                 className="w-full h-10 rounded-lg outline-hidden"
               />
+
+              {/* Live Captured Transcript Review Box */}
+              {liveTrans.fullTranscript && (
+                <div className="rounded-xl border border-border/80 bg-surface/90 p-3">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <FileText className="h-3.5 w-3.5 text-accent" />
+                      Captured Live Transcript ({liveTrans.wordCount} words)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyTranscript}
+                        className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-foreground transition-colors"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-3 w-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadTranscript}
+                        className="inline-flex items-center gap-1 text-[11px] text-text-secondary hover:text-foreground transition-colors"
+                        title="Download text file"
+                      >
+                        <Download className="h-3 w-3" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-[90px] overflow-y-auto text-xs text-text-secondary leading-relaxed bg-surface-2/50 p-2 rounded-lg border border-border/50">
+                    {liveTrans.fullTranscript}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-3 pt-2">
                 <Button
@@ -448,7 +638,7 @@ export function LiveAudioRecorder({
                   size="sm"
                   onClick={handleSubmit}
                   disabled={disabled || !audioBlob}
-                  className="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 font-medium"
+                  className="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 font-medium shadow-md shadow-accent/20"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   Process Meeting Audio
@@ -460,8 +650,11 @@ export function LiveAudioRecorder({
       </div>
 
       <div className="mt-4 flex items-center justify-between text-[11px] text-text-tertiary border-t border-border/50 pt-2.5">
-        <span>Audio formats: WebM / MP4 with Opus encoding</span>
-        <span>Automatic FFmpeg chunking supported</span>
+        <span className="flex items-center gap-1">
+          <Radio className="h-3 w-3 text-emerald-400" />
+          Real-time speech streaming enabled
+        </span>
+        <span>Automatic Whisper alignment supported</span>
       </div>
     </div>
   );
