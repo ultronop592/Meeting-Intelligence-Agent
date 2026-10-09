@@ -129,31 +129,22 @@ async def upload_audio(request: Request, file: UploadFile = File(...), current_u
             detail=f"Unsupported file type: {suffix}",
         )
 
-    os.makedirs(settings.upload_dir, exist_ok=True)
+    user_folder = str(current_user.id) if current_user else "shared"
     unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
-    file_path = os.path.join(settings.upload_dir, unique_name)
+    is_s3 = storage_service.is_s3_configured()
+    storage_key = f"audio/{user_folder}/{unique_name}" if is_s3 else unique_name
+    content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
-    size_bytes = 0
     try:
-        with open(file_path, "wb") as out:
-            while True:
-                chunk = await file.read(UPLOAD_CHUNK_SIZE_BYTES)
-                if not chunk:
-                    break
-                size_bytes += len(chunk)
-                if size_bytes > settings.max_upload_size_bytes:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file exceeds max size")
-                out.write(chunk)
-
-        if size_bytes == 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
-    except HTTPException:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise
-    except OSError as exc:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        saved_key, size_bytes = await storage_service.stream_upload(
+            file_obj=file,
+            storage_key=storage_key,
+            content_type=content_type,
+            max_size_bytes=settings.max_upload_size_bytes,
+        )
+    except ValueError as val_err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(val_err))
+    except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to store uploaded file: {exc}")
     finally:
         await file.close()
@@ -161,6 +152,7 @@ async def upload_audio(request: Request, file: UploadFile = File(...), current_u
     return {
         "filename": file.filename,
         "stored_filename": unique_name,
+        "storage_key": saved_key if is_s3 else None,
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
     }

@@ -106,6 +106,170 @@ class StorageService:
             raise FileNotFoundError(f"Source file not found: {local_path}")
         return await asyncio.to_thread(self._sync_upload, local_path, storage_key, content_type)
 
+    async def stream_upload(
+        self,
+        file_obj,
+        storage_key: str,
+        content_type: Optional[str] = None,
+        max_size_bytes: Optional[int] = None,
+    ) -> tuple[str, int]:
+        """Stream an incoming file directly to S3/R2 using multipart upload without disk buffering.
+
+        Falls back to streamed local disk writing if S3 is not configured.
+        Returns:
+            tuple[storage_key, total_bytes_uploaded]
+        """
+        c_type = content_type or "application/octet-stream"
+        max_bytes = max_size_bytes or settings.max_upload_size_bytes
+
+        client = self._get_s3_client()
+        if not client:
+            # Local storage fallback: stream chunks directly to disk
+            os.makedirs(settings.upload_dir, exist_ok=True)
+            dest_path = os.path.join(settings.upload_dir, storage_key)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            total_size = 0
+            with open(dest_path, "wb") as f:
+                while True:
+                    chunk = await file_obj.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > max_bytes:
+                        if os.path.exists(dest_path):
+                            os.remove(dest_path)
+                        raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
+                    f.write(chunk)
+            if total_size == 0:
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+                raise ValueError("Uploaded file is empty")
+            return storage_key, total_size
+
+        # S3 / Cloudflare R2 / Supabase S3 multipart streaming
+        bucket = settings.s3_bucket_name.strip()
+        PART_SIZE = 5 * 1024 * 1024  # 5 MB S3 multipart minimum
+        READ_CHUNK_SIZE = 1024 * 1024  # 1 MB reads
+        total_size = 0
+        buffer = bytearray()
+
+        # Step 1: Read up to PART_SIZE to determine if multipart is needed
+        while len(buffer) < PART_SIZE:
+            chunk = await file_obj.read(READ_CHUNK_SIZE)
+            if not chunk:
+                break
+            buffer.extend(chunk)
+            total_size += len(chunk)
+            if total_size > max_bytes:
+                raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
+
+        if total_size == 0:
+            raise ValueError("Uploaded file is empty")
+
+        # Case A: File is smaller than or equal to 5 MB -> single put_object
+        first_extra_chunk = await file_obj.read(READ_CHUNK_SIZE)
+        if not first_extra_chunk:
+            await asyncio.to_thread(
+                client.put_object,
+                Bucket=bucket,
+                Key=storage_key,
+                Body=bytes(buffer),
+                ContentType=c_type,
+            )
+            logger.info("Directly put %d bytes to S3 key %s (single part)", total_size, storage_key)
+            return storage_key, total_size
+
+        # Case B: File is larger than 5 MB -> S3 Multipart Upload
+        buffer.extend(first_extra_chunk)
+        total_size += len(first_extra_chunk)
+
+        mpu = await asyncio.to_thread(
+            client.create_multipart_upload,
+            Bucket=bucket,
+            Key=storage_key,
+            ContentType=c_type,
+        )
+        upload_id = mpu["UploadId"]
+        parts = []
+        part_number = 1
+
+        try:
+            # Upload first 5MB part
+            part_body = bytes(buffer[:PART_SIZE])
+            del buffer[:PART_SIZE]
+
+            res = await asyncio.to_thread(
+                client.upload_part,
+                Bucket=bucket,
+                Key=storage_key,
+                UploadId=upload_id,
+                PartNumber=part_number,
+                Body=part_body,
+            )
+            parts.append({"PartNumber": part_number, "ETag": res["ETag"]})
+            part_number += 1
+
+            # Stream remaining parts as incoming chunks arrive
+            while True:
+                chunk = await file_obj.read(READ_CHUNK_SIZE)
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+                total_size += len(chunk)
+                if total_size > max_bytes:
+                    raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
+
+                while len(buffer) >= PART_SIZE:
+                    part_body = bytes(buffer[:PART_SIZE])
+                    del buffer[:PART_SIZE]
+
+                    res = await asyncio.to_thread(
+                        client.upload_part,
+                        Bucket=bucket,
+                        Key=storage_key,
+                        UploadId=upload_id,
+                        PartNumber=part_number,
+                        Body=part_body,
+                    )
+                    parts.append({"PartNumber": part_number, "ETag": res["ETag"]})
+                    part_number += 1
+
+            # Upload final remaining bytes in buffer (can be < 5 MB)
+            if len(buffer) > 0:
+                res = await asyncio.to_thread(
+                    client.upload_part,
+                    Bucket=bucket,
+                    Key=storage_key,
+                    UploadId=upload_id,
+                    PartNumber=part_number,
+                    Body=bytes(buffer),
+                )
+                parts.append({"PartNumber": part_number, "ETag": res["ETag"]})
+
+            # Complete multipart upload
+            await asyncio.to_thread(
+                client.complete_multipart_upload,
+                Bucket=bucket,
+                Key=storage_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+            logger.info("Successfully streamed multipart upload (%d parts, %d bytes) to S3 key %s", len(parts), total_size, storage_key)
+            return storage_key, total_size
+
+        except Exception as exc:
+            logger.warning("Aborting S3 multipart upload for key %s (upload_id=%s): %s", storage_key, upload_id, exc)
+            try:
+                await asyncio.to_thread(
+                    client.abort_multipart_upload,
+                    Bucket=bucket,
+                    Key=storage_key,
+                    UploadId=upload_id,
+                )
+            except Exception as abort_exc:
+                logger.error("Failed to abort multipart upload: %s", abort_exc)
+            raise
+
     def _sync_generate_presigned_url(self, storage_key: str, expires_in: int) -> Optional[str]:
         client = self._get_s3_client()
         if not client:

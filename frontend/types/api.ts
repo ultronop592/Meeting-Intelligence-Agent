@@ -15,6 +15,7 @@ export type HealthResponse = {
 export type UploadResponse = {
   filename: string;
   stored_filename: string;
+  storage_key?: string | null;
   size_bytes: number;
   size_mb: number;
 };
