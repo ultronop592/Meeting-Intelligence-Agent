@@ -140,6 +140,9 @@ export function LiveAudioRecorder({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // 16 kHz mono is Whisper's ideal input — halves raw PCM size before encoding
+          sampleRate: { ideal: 16000 },
+          channelCount: { ideal: 1 },
         },
       });
       streamRef.current = stream;
@@ -157,7 +160,7 @@ export function LiveAudioRecorder({
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      // Determine best audio mimeType
+      // Determine best audio mimeType — prefer Opus which gives the best compression for speech
       let mimeType = "audio/webm";
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
         mimeType = "audio/webm;codecs=opus";
@@ -165,7 +168,22 @@ export function LiveAudioRecorder({
         mimeType = "audio/mp4";
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      // 64 kbps is the sweet spot for speech — indistinguishable from higher rates for Whisper
+      // but produces ~18x smaller files vs default MediaRecorder bitrate (~1.2 Mbps)
+      // A 1-hour meeting: ~500 MB raw → ~28 MB at 64 kbps
+      const SPEECH_BITRATE = 64_000;
+      const recorderOptions: MediaRecorderOptions = { mimeType };
+      try {
+        // Verify the browser honours bitsPerSecond with this mimeType
+        const testRecorder = new MediaRecorder(stream, { mimeType, bitsPerSecond: SPEECH_BITRATE });
+        testRecorder.stop();
+        recorderOptions.bitsPerSecond = SPEECH_BITRATE;
+      } catch {
+        // Browser doesn't support bitrate control — fall back to defaults
+        console.warn("[Recorder] bitsPerSecond not supported — using default bitrate");
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
