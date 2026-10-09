@@ -135,6 +135,43 @@ class StorageService:
         exp = expires_in or settings.s3_presigned_url_expire_seconds
         return await asyncio.to_thread(self._sync_generate_presigned_url, storage_key, exp)
 
+    def _sync_generate_presigned_upload_url(
+        self,
+        storage_key: str,
+        content_type: str = "application/octet-stream",
+        expires_in: int = 3600,
+    ) -> Optional[str]:
+        client = self._get_s3_client()
+        if not client:
+            return None
+        try:
+            params = {
+                "Bucket": settings.s3_bucket_name.strip(),
+                "Key": storage_key,
+                "ContentType": content_type,
+            }
+            url = client.generate_presigned_url(
+                ClientMethod="put_object",
+                Params=params,
+                ExpiresIn=expires_in,
+            )
+            return url
+        except Exception as exc:
+            logger.warning("Error generating presigned upload URL for key %s: %s", storage_key, exc)
+            return None
+
+    async def get_presigned_upload_url(
+        self,
+        storage_key: str,
+        content_type: str = "application/octet-stream",
+        expires_in: Optional[int] = None,
+    ) -> Optional[str]:
+        """Generates a presigned PUT URL allowing clients to upload audio directly to S3 / Cloudflare R2 / Supabase."""
+        if not self.is_s3_configured():
+            return None
+        exp = expires_in or settings.s3_presigned_url_expire_seconds
+        return await asyncio.to_thread(self._sync_generate_presigned_upload_url, storage_key, content_type, exp)
+
     def _sync_download(self, storage_key: str, destination_path: str) -> bool:
         client = self._get_s3_client()
         if client:

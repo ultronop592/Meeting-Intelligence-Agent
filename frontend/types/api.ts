@@ -19,8 +19,30 @@ export type UploadResponse = {
   size_mb: number;
 };
 
+export type PresignedUploadRequest = {
+  filename: string;
+  content_type?: string;
+};
+
+export type PresignedUploadResponse = {
+  direct_upload_available: boolean;
+  presigned_url?: string | null;
+  storage_key?: string | null;
+  content_type?: string | null;
+};
+
+export type UploadAudioResult = {
+  filename: string;
+  stored_filename?: string;
+  audio_file_path?: string;
+  storage_key?: string;
+  size_bytes?: number;
+  size_mb: number;
+};
+
 export type ProcessMeetingRequest = {
-  audio_file_path: string;
+  audio_file_path?: string;
+  storage_key?: string;
   audio_filename: string;
 };
 

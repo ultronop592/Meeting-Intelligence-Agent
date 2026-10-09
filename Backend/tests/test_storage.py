@@ -24,30 +24,31 @@ async def test_local_storage_lifecycle(temp_audio_file):
     """Verify local storage backend upload, exists, download, and delete."""
     service = StorageService()
 
-    storage_key = "audio/test_user/test_audio.mp3"
-    uploaded_key = await service.upload_file(temp_audio_file, storage_key)
-    assert uploaded_key == storage_key
+    with patch.object(service, "is_s3_configured", return_value=False):
+        storage_key = "audio/test_user/test_audio.mp3"
+        uploaded_key = await service.upload_file(temp_audio_file, storage_key)
+        assert uploaded_key == storage_key
 
-    # Exists check
-    assert await service.file_exists(storage_key) is True
+        # Exists check
+        assert await service.file_exists(storage_key) is True
 
-    # Download check
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as dl_file:
-        dl_path = dl_file.name
-    try:
-        success = await service.download_file(storage_key, dl_path)
-        assert success is True
-        with open(dl_path, "rb") as f:
-            data = f.read()
-        assert data == b"ID3_MOCK_AUDIO_DATA_FOR_TESTING"
-    finally:
-        if os.path.exists(dl_path):
-            os.remove(dl_path)
+        # Download check
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as dl_file:
+            dl_path = dl_file.name
+        try:
+            success = await service.download_file(storage_key, dl_path)
+            assert success is True
+            with open(dl_path, "rb") as f:
+                data = f.read()
+            assert data == b"ID3_MOCK_AUDIO_DATA_FOR_TESTING"
+        finally:
+            if os.path.exists(dl_path):
+                os.remove(dl_path)
 
-    # Delete check
-    del_success = await service.delete_file(storage_key)
-    assert del_success is True
-    assert await service.file_exists(storage_key) is False
+        # Delete check
+        del_success = await service.delete_file(storage_key)
+        assert del_success is True
+        assert await service.file_exists(storage_key) is False
 
 
 @pytest.mark.asyncio
@@ -72,10 +73,18 @@ async def test_s3_storage_configured(temp_audio_file):
 
         presigned_url = await service.get_presigned_url("audio/user1/test.mp3", expires_in=1800)
         assert presigned_url == "https://r2.cloudflarestorage.com/my-bucket/audio/test.mp3?token=mock123"
-        mock_client.generate_presigned_url.assert_called_once_with(
+        mock_client.generate_presigned_url.assert_called_with(
             ClientMethod="get_object",
             Params={"Bucket": "test-bucket", "Key": "audio/user1/test.mp3"},
             ExpiresIn=1800,
+        )
+
+        upload_presigned = await service.get_presigned_upload_url("audio/user1/test.mp3", content_type="audio/webm", expires_in=3600)
+        assert upload_presigned == "https://r2.cloudflarestorage.com/my-bucket/audio/test.mp3?token=mock123"
+        mock_client.generate_presigned_url.assert_called_with(
+            ClientMethod="put_object",
+            Params={"Bucket": "test-bucket", "Key": "audio/user1/test.mp3", "ContentType": "audio/webm"},
+            ExpiresIn=3600,
         )
 
 

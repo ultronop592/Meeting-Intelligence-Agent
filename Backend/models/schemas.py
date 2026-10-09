@@ -256,10 +256,25 @@ class NotificationLogRow(BaseModel):
 # 5. API REQUEST / RESPONSE MODELS
 # =============================================================================
  
+class PresignedUploadRequest(BaseModel):
+    """POST /meeting/presigned-upload-url"""
+    filename: str = Field(..., examples=["standup.mp3"])
+    content_type: Optional[str] = Field(default=None, examples=["audio/mpeg"])
+
+
+class PresignedUploadResponse(BaseModel):
+    """Response from POST /meeting/presigned-upload-url"""
+    direct_upload_available: bool
+    presigned_url: Optional[str] = None
+    storage_key: Optional[str] = None
+    content_type: Optional[str] = None
+
+
 class ProcessMeetingRequest(BaseModel):
     """POST /api/meetings/process"""
-    audio_file_path: str = Field(..., examples=["/tmp/uploads/standup.mp3"])
+    audio_file_path: Optional[str] = Field(default=None, examples=["/tmp/uploads/standup.mp3"])
     audio_filename:  str = Field(..., examples=["standup.mp3"])
+    storage_key:     Optional[str] = Field(default=None, examples=["audio/user1/standup.mp3"])
  
  
 class ProcessMeetingResponse(BaseModel):

@@ -147,6 +147,7 @@ async def arun_meeting_agent(
     user_id: str | None = None,
     job_id: str | None = None,
     cleanup_audio: bool | None = None,
+    storage_key: str | None = None,
 ) -> AgentState:
     """Asynchronously execute the 4-stage multi-agent meeting pipeline.
 
@@ -165,12 +166,13 @@ async def arun_meeting_agent(
         audio_filename=audio_filename,
         user_id=user_id,
         job_id=job_id,
+        audio_storage_key=storage_key,
     )
-    if audio_file_path and os.path.exists(audio_file_path):
+    if not initial_state.audio_storage_key and audio_file_path and os.path.exists(audio_file_path):
         try:
             from core.storage import storage_service
-            storage_key = f"audio/{user_id or 'shared'}/{int(time.time())}_{audio_filename}"
-            uploaded_key = await storage_service.upload_file(audio_file_path, storage_key)
+            new_storage_key = f"audio/{user_id or 'shared'}/{int(time.time())}_{audio_filename}"
+            uploaded_key = await storage_service.upload_file(audio_file_path, new_storage_key)
             initial_state.audio_storage_key = uploaded_key
         except Exception as storage_exc:
             logger.warning("Could not persist audio to storage service: %s", storage_exc)
@@ -205,6 +207,7 @@ def run_meeting_agent(
     audio_filename: str,
     user_id: str | None = None,
     cleanup_audio: bool | None = None,
+    storage_key: str | None = None,
 ) -> AgentState:
     """Synchronous wrapper for arun_meeting_agent for backwards-compatibility / testing."""
     try:
@@ -217,11 +220,11 @@ def run_meeting_agent(
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 asyncio.run,
-                arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio),
+                arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio, storage_key=storage_key),
             )
             return future.result()
     else:
         return asyncio.run(
-            arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio)
+            arun_meeting_agent(audio_file_path, audio_filename, user_id, cleanup_audio=cleanup_audio, storage_key=storage_key)
         )
 

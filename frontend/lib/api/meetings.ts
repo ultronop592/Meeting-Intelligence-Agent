@@ -14,6 +14,8 @@ import type {
   SendResult,
   UpdateActionItemRequest,
   UploadResponse,
+  UploadAudioResult,
+  PresignedUploadResponse,
   AgentQueryRequest,
   AgentQueryResponse,
   ChatSessionListItem,
@@ -106,10 +108,116 @@ async function uploadAudioWithProgress(
   });
 }
 
-const processMeetingSchema = z.object({
-  audio_file_path: z.string().min(1),
-  audio_filename: z.string().min(1),
-});
+function uploadToS3WithProgress(
+  presignedUrl: string,
+  file: File,
+  contentType: string,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", presignedUrl);
+    xhr.setRequestHeader("Content-Type", contentType);
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable) return;
+      const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      onProgress(percent);
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new DOMException("Upload aborted", "AbortError"));
+        return;
+      }
+
+      signal.addEventListener(
+        "abort",
+        () => {
+          xhr.abort();
+          reject(new DOMException("Upload aborted", "AbortError"));
+        },
+        { once: true }
+      );
+    }
+
+    xhr.onerror = () => reject(new Error("Upload to cloud storage failed due to network error."));
+    xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`Direct storage upload failed with status ${xhr.status}`));
+      }
+    };
+
+    xhr.send(file);
+  });
+}
+
+async function uploadAudioDirectOrFallback(
+  file: File,
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<UploadAudioResult> {
+  // Step 1: Request presigned S3 PUT URL for direct browser-to-S3 upload (2x faster, bypasses FastAPI)
+  try {
+    const presignedInfo = await apiRequest<PresignedUploadResponse>(
+      "/meeting/presigned-upload-url",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || "application/octet-stream",
+        }),
+      }
+    );
+
+    if (presignedInfo.direct_upload_available && presignedInfo.presigned_url && presignedInfo.storage_key) {
+      await uploadToS3WithProgress(
+        presignedInfo.presigned_url,
+        file,
+        presignedInfo.content_type || file.type || "application/octet-stream",
+        onProgress,
+        signal
+      );
+
+      return {
+        filename: file.name,
+        storage_key: presignedInfo.storage_key,
+        size_bytes: file.size,
+        size_mb: Number((file.size / (1024 * 1024)).toFixed(2)),
+      };
+    }
+  } catch (err) {
+    if (signal?.aborted) {
+      throw err;
+    }
+    console.warn("Direct S3 upload unavailable or failed, falling back to server multipart upload:", err);
+  }
+
+  // Step 2: Fallback to standard server upload via /meeting/upload
+  const upload = await uploadAudioWithProgress(file, onProgress, signal);
+  return {
+    filename: upload.filename,
+    stored_filename: upload.stored_filename,
+    audio_file_path: `${process.env.NEXT_PUBLIC_UPLOAD_DIR_HINT || "/tmp/meeting-agent-uploads"}/${upload.stored_filename}`,
+    size_bytes: upload.size_bytes,
+    size_mb: upload.size_mb,
+  };
+}
+
+const processMeetingSchema = z
+  .object({
+    audio_file_path: z.string().optional(),
+    storage_key: z.string().optional(),
+    audio_filename: z.string().min(1),
+  })
+  .refine((data) => Boolean(data.audio_file_path || data.storage_key), {
+    message: "Either audio_file_path or storage_key must be provided",
+  });
 
 const updateActionItemSchema = z.object({
   status: z.enum(["open", "in_progress", "done"]),
@@ -122,7 +230,7 @@ export const meetingApi = {
     file: File,
     onProgress?: (percent: number) => void,
     signal?: AbortSignal
-  ) => uploadAudioWithProgress(file, onProgress, signal),
+  ) => uploadAudioDirectOrFallback(file, onProgress, signal),
 
   processMeeting: (payload: ProcessMeetingRequest) => {
     processMeetingSchema.parse(payload);

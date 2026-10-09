@@ -24,6 +24,7 @@ Endpoints:
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+import mimetypes
 import os
 from pathlib import Path
 import secrets
@@ -86,6 +87,8 @@ from models.schemas import (
     MeetingRow,
     NotificationLogRow,
     ParticipantRow,
+    PresignedUploadRequest,
+    PresignedUploadResponse,
     Priority,
     ProcessMeetingRequest,
     PublicMeetingResponse,
@@ -164,6 +167,50 @@ async def upload_audio(request: Request, file: UploadFile = File(...), current_u
 
 
 @meetings_router.post(
+    "/meeting/presigned-upload-url",
+    response_model=PresignedUploadResponse,
+    summary="Get presigned S3 upload URL",
+    description="Generate a presigned PUT URL allowing the client to upload meeting audio directly to cloud storage.",
+)
+@limiter.limit("60/minute")
+async def get_presigned_upload_url_endpoint(
+    request: Request,
+    payload: PresignedUploadRequest,
+    current_user: User = Depends(get_current_user),
+):
+    lower_name = (payload.filename or "").lower()
+    suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(payload.filename or "").suffix.lower()
+    if suffix not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {suffix}",
+        )
+
+    if not storage_service.is_s3_configured():
+        return PresignedUploadResponse(direct_upload_available=False)
+
+    user_folder = str(current_user.id) if current_user else "shared"
+    unique_key = f"audio/{user_folder}/{uuid.uuid4().hex[:8]}_{payload.filename}"
+    content_type = payload.content_type or mimetypes.guess_type(payload.filename)[0] or "application/octet-stream"
+
+    presigned_url = await storage_service.get_presigned_upload_url(
+        storage_key=unique_key,
+        content_type=content_type,
+        expires_in=settings.s3_presigned_url_expire_seconds or 3600,
+    )
+
+    if not presigned_url:
+        return PresignedUploadResponse(direct_upload_available=False)
+
+    return PresignedUploadResponse(
+        direct_upload_available=True,
+        presigned_url=presigned_url,
+        storage_key=unique_key,
+        content_type=content_type,
+    )
+
+
+@meetings_router.post(
     "/transcribe/live-chunk",
     response_model=LiveTranscriptionChunkResponse,
     summary="Transcribe audio chunk for live feedback",
@@ -217,13 +264,30 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
     """Background task: run the multi-agent pipeline and persist status in DB."""
     await create_processing_job(job_id, user_id=user_id)
 
+    local_temp_path = None
     try:
+        audio_path_to_use = payload.audio_file_path
+        storage_key_to_use = payload.storage_key
+
+        # If audio was uploaded directly to cloud storage, download it to temp disk for Whisper/FFmpeg
+        if storage_key_to_use and (not audio_path_to_use or not os.path.exists(audio_path_to_use)):
+            os.makedirs(settings.upload_dir, exist_ok=True)
+            local_temp_path = os.path.join(
+                settings.upload_dir,
+                f"s3_temp_{uuid.uuid4().hex[:8]}_{payload.audio_filename}",
+            )
+            download_ok = await storage_service.download_file(storage_key_to_use, local_temp_path)
+            if not download_ok or not os.path.exists(local_temp_path):
+                raise RuntimeError(f"Failed to retrieve audio from object storage: {storage_key_to_use}")
+            audio_path_to_use = local_temp_path
+
         phase_start = time.perf_counter()
         state = await arun_meeting_agent(
-            payload.audio_file_path,
+            audio_path_to_use,
             payload.audio_filename,
             user_id=user_id,
             job_id=job_id,
+            storage_key=storage_key_to_use,
         )
 
         completed_nodes = ["upload"] + (state.completed_nodes or [])
@@ -288,11 +352,18 @@ async def _process_job(job_id: str, payload: ProcessMeetingRequest, user_id: str
             completed_at=datetime.now(timezone.utc),
         )
     finally:
-        try:
-            if os.path.exists(payload.audio_file_path):
+        # Clean up temporary S3 download scratch file
+        if local_temp_path and os.path.exists(local_temp_path):
+            try:
+                os.remove(local_temp_path)
+            except OSError:
+                pass
+        # Clean up local upload path if delete_audio_after_processing is set
+        elif payload.audio_file_path and settings.delete_audio_after_processing and os.path.exists(payload.audio_file_path):
+            try:
                 os.remove(payload.audio_file_path)
-        except OSError:
-            pass
+            except OSError:
+                pass
 
 
 @meetings_router.post("/meetings/process")
@@ -301,8 +372,9 @@ async def process_meeting(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
-    if not os.path.exists(request.audio_file_path):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file not found")
+    if not request.storage_key:
+        if not request.audio_file_path or not os.path.exists(request.audio_file_path):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file not found")
 
     job_id = str(uuid.uuid4())
     user_id = current_user.id

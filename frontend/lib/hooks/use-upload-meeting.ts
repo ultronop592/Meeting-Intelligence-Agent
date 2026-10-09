@@ -18,7 +18,8 @@ export function useUploadMeeting() {
     mutationFn: async ({ file, onProgress, signal }: UploadMutationInput) => {
       const upload = await meetingApi.uploadAudio(file, onProgress, signal);
       const processResult = await meetingApi.processMeeting({
-        audio_file_path: `${process.env.NEXT_PUBLIC_UPLOAD_DIR_HINT || "/tmp/meeting-agent-uploads"}/${upload.stored_filename}`,
+        audio_file_path: upload.audio_file_path,
+        storage_key: upload.storage_key,
         audio_filename: upload.filename,
       });
       return {

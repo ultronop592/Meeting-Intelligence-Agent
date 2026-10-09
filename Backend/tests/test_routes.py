@@ -694,4 +694,34 @@ async def test_stream_meeting_audio_not_found(authenticated_client, seeded_meeti
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_presigned_upload_url_s3_configured(authenticated_client):
+    """Ensure POST /meeting/presigned-upload-url returns presigned URL when S3 is configured."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_url = "https://r2.cloudflarestorage.com/meetings/put_mock?token=123"
+    with patch("api.meetings.storage_service.is_s3_configured", return_value=True), \
+         patch("api.meetings.storage_service.get_presigned_upload_url", new=AsyncMock(return_value=mock_url)):
+        resp = await authenticated_client.post(
+            "/meeting/presigned-upload-url",
+            json={"filename": "standup.mp3", "content_type": "audio/mpeg"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["direct_upload_available"] is True
+        assert data["presigned_url"] == mock_url
+        assert "audio/" in data["storage_key"]
+
+
+@pytest.mark.asyncio
+async def test_presigned_upload_url_unsupported_format(authenticated_client):
+    """Ensure unsupported extensions return 400."""
+    resp = await authenticated_client.post(
+        "/meeting/presigned-upload-url",
+        json={"filename": "malicious.exe"},
+    )
+    assert resp.status_code == 400
+
+
+
 
