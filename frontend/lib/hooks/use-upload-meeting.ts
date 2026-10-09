@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { meetingApi } from "@/lib/api/meetings";
 
 type UploadMutationInput = {
@@ -10,6 +11,9 @@ type UploadMutationInput = {
 };
 
 export function useUploadMeeting() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async ({ file, onProgress, signal }: UploadMutationInput) => {
       const upload = await meetingApi.uploadAudio(file, onProgress, signal);
@@ -22,6 +26,19 @@ export function useUploadMeeting() {
         filename: upload.filename,
         size_mb: upload.size_mb,
       };
+    },
+    onSuccess: (data) => {
+      if (data?.job_id) {
+        queryClient.setQueryData(["active-job-meta"], {
+          jobId: data.job_id,
+          startedAt: Date.now(),
+          lastDurationMs: null,
+          fileName: data.filename ?? null,
+          fileSizeMb: data.size_mb ?? null,
+          isDismissed: false,
+        });
+        router.push(`/meetings/${data.job_id}`);
+      }
     },
   });
 }

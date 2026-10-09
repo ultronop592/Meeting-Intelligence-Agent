@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMeetingDetail } from "@/lib/hooks/use-meeting-detail";
+import { useJobStatus } from "@/lib/hooks/use-job-status";
 import { useAgentChatStream } from "@/lib/hooks/use-agent-chat";
 import { meetingApi } from "@/lib/api/meetings";
 import { toUserErrorMessage } from "@/lib/api/client";
@@ -15,7 +17,9 @@ import { Input } from "@/components/ui/input";
 import { SkeletonLoader } from "@/components/ui/skeleton-loader";
 import { AudioPlayer } from "@/components/meeting/audio-player";
 import { ShareModal } from "@/components/meeting/share-modal";
-import { Bell, Download, Loader2, Share2 } from "lucide-react";
+import { PipelineTracker } from "@/components/processing/pipeline-tracker";
+import { ProcessingTimeline } from "@/components/meeting/processing-timeline";
+import { ArrowLeft, Bell, Download, Loader2, Share2 } from "lucide-react";
 import type { ChatMessage } from "@/types/api";
 
 type SendChannel = "email" | "slack" | "jira" | "calendar";
@@ -42,7 +46,10 @@ export default function MeetingDetailPage() {
   const queryClient = useQueryClient();
   const meetingId = typeof params?.id === "string" ? params.id : null;
   const { data, isLoading, error, refetch } = useMeetingDetail(meetingId);
+  const jobStatus = useJobStatus(meetingId);
   const { streamQuery, isStreaming } = useAgentChatStream();
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  const [localStartedAt] = useState(() => Date.now());
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [thread, setThread] = useState<{ role: "user" | "assistant"; message: string; isStreaming?: boolean; sources?: string[] }[]>([]);
@@ -376,6 +383,190 @@ export default function MeetingDetailPage() {
       setIsSendingReminders(false);
     }
   };
+
+  // Live stopwatch ticker when processing
+  useEffect(() => {
+    if (jobStatus.data?.status !== "processing") return;
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [jobStatus.data?.status]);
+
+  // When background processing completes, auto-transition route to the persisted meeting
+  useEffect(() => {
+    if (jobStatus.data?.status === "completed" && jobStatus.data.meeting_id) {
+      toast.success("Meeting processed successfully!");
+      void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      void queryClient.invalidateQueries({ queryKey: ["meeting", jobStatus.data.meeting_id] });
+      if (meetingId !== jobStatus.data.meeting_id) {
+        router.replace(`/meetings/${jobStatus.data.meeting_id}`);
+      }
+    }
+  }, [jobStatus.data?.status, jobStatus.data?.meeting_id, meetingId, queryClient, router]);
+
+  const activeJobMeta = queryClient.getQueryData<{
+    jobId: string | null;
+    startedAt: number | null;
+    fileName?: string | null;
+    fileSizeMb?: number | null;
+  }>(["active-job-meta"]);
+
+  const effectiveStartedAt = activeJobMeta?.startedAt || localStartedAt;
+  const elapsedMs = nowMs && effectiveStartedAt ? Math.max(0, nowMs - effectiveStartedAt) : null;
+
+  const isJobActive =
+    !data &&
+    (jobStatus.data?.status === "processing" ||
+      Boolean(jobStatus.data && jobStatus.data.status !== "failed" && jobStatus.data.status !== "completed"));
+
+  const isJobFailed = !data && jobStatus.data?.status === "failed";
+
+  // State 1: Active background processing job
+  if (isJobActive) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-surface p-5 shadow-xs">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/meetings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface-2 text-text-secondary hover:text-foreground hover:bg-surface-3 transition-colors"
+              title="Back to all meetings"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-accent uppercase tracking-wider">
+                  AI Pipeline Active
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {jobStatus.isRealtime ? "WebSocket Live Stream" : "Connected"}
+                </span>
+              </div>
+              <h2 className="heading-title mt-1.5 text-foreground">
+                Analyzing Meeting Recording...
+              </h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {activeJobMeta?.fileName ? (
+                  <span>
+                    Processing <strong className="text-foreground">{activeJobMeta.fileName}</strong>
+                    {activeJobMeta.fileSizeMb ? ` (${activeJobMeta.fileSizeMb} MB)` : ""} •{" "}
+                  </span>
+                ) : null}
+                Whisper Large-v3 transcription, LLaMA 3.3 multi-agent reasoning & pgvector indexing in progress.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => router.push("/meetings")}>
+              View All Meetings
+            </Button>
+          </div>
+        </div>
+
+        {/* Real-time Visual Pipeline Tracker */}
+        <PipelineTracker
+          completedNodes={jobStatus.data?.completed_nodes || []}
+          status={jobStatus.data?.status}
+          isRealtime={jobStatus.isRealtime}
+          durationMs={jobStatus.data?.duration_ms ?? elapsedMs}
+          nodeTimings={jobStatus.data?.node_timings}
+        />
+
+        {/* Detailed Timeline with stage breakdowns and node timings */}
+        <ProcessingTimeline
+          status={jobStatus.data?.status}
+          completedNodes={jobStatus.data?.completed_nodes}
+          errors={jobStatus.data?.errors}
+          elapsedMs={elapsedMs}
+          nodeTimings={jobStatus.data?.node_timings}
+          fileName={activeJobMeta?.fileName}
+          fileSizeMb={activeJobMeta?.fileSizeMb}
+          meetingId={jobStatus.data?.meeting_id}
+          meetingTitle={jobStatus.data?.title}
+          shortSummary={jobStatus.data?.short_summary}
+          actionItemsCount={jobStatus.data?.action_items_count}
+          decisionsCount={jobStatus.data?.decisions_count}
+          participantsCount={jobStatus.data?.participants_count}
+          onDismiss={() => router.push("/meetings")}
+        />
+      </div>
+    );
+  }
+
+  // State 2: Background processing failed
+  if (isJobFailed) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/meetings"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface-2 text-text-secondary hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h2 className="heading-title text-foreground">Processing Issue</h2>
+        </div>
+
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 space-y-4">
+          <h3 className="text-base font-semibold text-red-400">Meeting Pipeline Failed</h3>
+          <p className="text-sm text-red-300">
+            {jobStatus.data?.errors?.[0] || "The multi-agent pipeline encountered an error during audio processing."}
+          </p>
+          <div className="flex items-center gap-3 pt-2">
+            <Button variant="outline" size="sm" onClick={() => router.push("/meetings")}>
+              Back to Meetings
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 3: Still loading meeting details
+  if (!data && isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-[16px] border border-border bg-surface p-5">
+          <SkeletonLoader className="h-8 w-1/3" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <SkeletonLoader key={index} className="h-28" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // State 4: Meeting not found
+  if (!data && !isLoading && error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/meetings"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface-2 text-text-secondary hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h2 className="heading-title text-foreground">Meeting Not Found</h2>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-8 text-center space-y-3">
+          <p className="text-base font-semibold text-foreground">Unable to find this meeting</p>
+          <p className="text-sm text-text-secondary max-w-md mx-auto">
+            This meeting or processing job could not be found, or you might not have access to view it.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => router.push("/meetings")} className="mt-2">
+            Return to Meetings
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[2.15fr_1fr]">
