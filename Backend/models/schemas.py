@@ -270,6 +270,30 @@ class PresignedUploadResponse(BaseModel):
     content_type: Optional[str] = None
 
 
+class ResumableUploadTokenRequest(BaseModel):
+    """POST /meeting/resumable-upload-token"""
+    filename: str = Field(..., examples=["standup.mp3"])
+    content_type: Optional[str] = Field(default=None, examples=["audio/mpeg"])
+
+
+class ResumableUploadTokenResponse(BaseModel):
+    """Response from POST /meeting/resumable-upload-token.
+
+    Allows the browser to upload directly to Supabase Storage using the
+    TUS resumable-upload protocol (tus-js-client).  The client uses:
+      - tus_endpoint: POST target for starting/resuming a TUS upload
+      - auth_token: Bearer token for the Authorization header
+      - storage_key: the object path inside the bucket (pass to /meetings/process)
+      - bucket_name: Supabase bucket name (for x-upsert / metadata)
+    """
+    resumable_upload_available: bool
+    tus_endpoint: Optional[str] = None
+    auth_token: Optional[str] = None
+    storage_key: Optional[str] = None
+    bucket_name: Optional[str] = None
+    content_type: Optional[str] = None
+
+
 class ProcessMeetingRequest(BaseModel):
     """POST /api/meetings/process"""
     audio_file_path: Optional[str] = Field(default=None, examples=["/tmp/uploads/standup.mp3"])

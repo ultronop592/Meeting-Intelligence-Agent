@@ -92,6 +92,8 @@ from models.schemas import (
     Priority,
     ProcessMeetingRequest,
     PublicMeetingResponse,
+    ResumableUploadTokenRequest,
+    ResumableUploadTokenResponse,
     ShareLinkCreateRequest,
     ShareLinkResponse,
     UpdateActionItemRequest,
@@ -198,6 +200,66 @@ async def get_presigned_upload_url_endpoint(
         direct_upload_available=True,
         presigned_url=presigned_url,
         storage_key=unique_key,
+        content_type=content_type,
+    )
+
+
+@meetings_router.post(
+    "/meeting/resumable-upload-token",
+    response_model=ResumableUploadTokenResponse,
+    summary="Get Supabase TUS resumable-upload credentials",
+    description=(
+        "Returns the Supabase TUS endpoint URL and a short-lived auth token so the "
+        "browser can upload meeting audio files of any size (1 GB+) directly to "
+        "Supabase Storage using the TUS resumable-upload protocol, bypassing the "
+        "FastAPI server entirely and avoiding memory/timeout limits."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_resumable_upload_token(
+    request: Request,
+    payload: ResumableUploadTokenRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Issue a Supabase TUS upload token for direct browser → Supabase Storage uploads."""
+    tus_endpoint = settings.supabase_tus_endpoint
+    bucket = settings.s3_bucket_name.strip() if settings.s3_bucket_name else ""
+
+    if not tus_endpoint or not bucket:
+        return ResumableUploadTokenResponse(resumable_upload_available=False)
+
+    lower_name = (payload.filename or "").lower()
+    suffix = ".mp4" if lower_name.endswith(".mp.4") else Path(payload.filename or "").suffix.lower()
+    if suffix not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {suffix}",
+        )
+
+    user_folder = str(current_user.id) if current_user else "shared"
+    storage_key = f"audio/{user_folder}/{uuid.uuid4().hex[:8]}_{payload.filename}"
+    content_type = (
+        payload.content_type
+        or mimetypes.guess_type(payload.filename or "")[0]
+        or "application/octet-stream"
+    )
+
+    # Extract the raw JWT from the Authorization header so the browser can
+    # forward it to Supabase's TUS endpoint unchanged.
+    auth_header = request.headers.get("Authorization", "")
+    raw_token = auth_header.removeprefix("Bearer ").strip()
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization token",
+        )
+
+    return ResumableUploadTokenResponse(
+        resumable_upload_available=True,
+        tus_endpoint=tus_endpoint,
+        auth_token=raw_token,
+        storage_key=storage_key,
+        bucket_name=bucket,
         content_type=content_type,
     )
 

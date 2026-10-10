@@ -49,18 +49,39 @@ class StorageService:
             from botocore.config import Config
 
             addressing_style = "path" if settings.s3_endpoint_url else "virtual"
+            boto_config = Config(
+                signature_version="s3v4",
+                s3={"addressing_style": addressing_style},
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            )
             client_kwargs = {
                 "service_name": "s3",
                 "aws_access_key_id": settings.s3_access_key_id.strip(),
                 "aws_secret_access_key": settings.s3_secret_access_key.strip(),
                 "region_name": settings.s3_region_name.strip() or "auto",
-                "config": Config(signature_version="s3v4", s3={"addressing_style": addressing_style}),
+                "config": boto_config,
             }
 
             if settings.s3_endpoint_url and settings.s3_endpoint_url.strip():
                 client_kwargs["endpoint_url"] = settings.s3_endpoint_url.strip()
 
             self._s3_client = boto3.client(**client_kwargs)
+
+            def _clean_s3_headers(request, **kwargs):
+                if "Transfer-Encoding" in request.headers:
+                    del request.headers["Transfer-Encoding"]
+                if request.headers.get("Content-Encoding") == "aws-chunked":
+                    del request.headers["Content-Encoding"]
+                if "Content-Length" not in request.headers and hasattr(request, "body") and request.body is not None:
+                    try:
+                        request.headers["Content-Length"] = str(len(request.body))
+                    except (TypeError, AttributeError):
+                        pass
+
+            self._s3_client.meta.events.register("before-send.s3.UploadPart", _clean_s3_headers)
+            self._s3_client.meta.events.register("before-send.s3.PutObject", _clean_s3_headers)
+
             logger.info(
                 "S3/R2 storage client initialized (bucket=%s, endpoint=%s)",
                 settings.s3_bucket_name,
@@ -179,9 +200,35 @@ class StorageService:
             logger.info("Directly put %d bytes to S3 key %s (single part)", total_size, storage_key)
             return storage_key, total_size
 
-        # Case B: File is larger than 5 MB -> S3 Multipart Upload
+        # Case B: File is larger than 5 MB
         buffer.extend(first_extra_chunk)
         total_size += len(first_extra_chunk)
+
+        # If the storage provider doesn't support multipart (e.g. Supabase returns
+        # HTTP 540 on CreateMultipartUpload), buffer the entire file and use a
+        # single put_object call instead.
+        if not settings.s3_supports_multipart:
+            logger.info(
+                "Storage provider does not support multipart uploads — buffering full file for key %s",
+                storage_key,
+            )
+            while True:
+                chunk = await file_obj.read(READ_CHUNK_SIZE)
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+                total_size += len(chunk)
+                if total_size > max_bytes:
+                    raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
+            await asyncio.to_thread(
+                client.put_object,
+                Bucket=bucket,
+                Key=storage_key,
+                Body=bytes(buffer),
+                ContentType=c_type,
+            )
+            logger.info("Single put_object uploaded %d bytes to S3 key %s", total_size, storage_key)
+            return storage_key, total_size
 
         mpu = await asyncio.to_thread(
             client.create_multipart_upload,

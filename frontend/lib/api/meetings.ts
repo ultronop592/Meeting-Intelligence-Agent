@@ -162,7 +162,29 @@ async function uploadAudioDirectOrFallback(
   onProgress?: (percent: number) => void,
   signal?: AbortSignal
 ): Promise<UploadAudioResult> {
-  // Step 1: Request presigned S3 PUT URL for direct browser-to-S3 upload (2x faster, bypasses FastAPI)
+  // ─── Stage 1: TUS resumable upload (browser → Supabase, no backend proxy) ───
+  // Supports unlimited file sizes (1 GB+ meeting recordings).
+  // Automatically resumes on reconnect; uses 6 MB chunks.
+  try {
+    const { tusUploadToSupabase } = await import("@/lib/api/tus-upload");
+    const result = await tusUploadToSupabase(file, onProgress, signal);
+    return {
+      filename: result.filename,
+      storage_key: result.storage_key,
+      size_bytes: result.size_bytes,
+      size_mb: result.size_mb,
+    };
+  } catch (err) {
+    if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      throw err;
+    }
+    console.warn(
+      "TUS resumable upload unavailable or failed, falling back to presigned PUT:",
+      err
+    );
+  }
+
+  // ─── Stage 2: Presigned S3 PUT URL (direct, single PUT, ≤ ~50 MB on Supabase) ───
   try {
     const presignedInfo = await apiRequest<PresignedUploadResponse>(
       "/meeting/presigned-upload-url",
@@ -192,13 +214,17 @@ async function uploadAudioDirectOrFallback(
       };
     }
   } catch (err) {
-    if (signal?.aborted) {
+    if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
       throw err;
     }
-    console.warn("Direct S3 upload unavailable or failed, falling back to server multipart upload:", err);
+    console.warn(
+      "Presigned PUT upload unavailable or failed, falling back to server upload:",
+      err
+    );
   }
 
-  // Step 2: Fallback to standard server upload via /meeting/upload
+  // ─── Stage 3: Legacy server-proxy upload (multipart via FastAPI) ───
+  // Only used when cloud storage is not configured (local dev / self-hosted).
   const upload = await uploadAudioWithProgress(file, onProgress, signal);
   return {
     filename: upload.filename,

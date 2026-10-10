@@ -32,6 +32,15 @@ export type PresignedUploadResponse = {
   content_type?: string | null;
 };
 
+export type ResumableUploadTokenResponse = {
+  resumable_upload_available: boolean;
+  tus_endpoint?: string | null;
+  auth_token?: string | null;
+  storage_key?: string | null;
+  bucket_name?: string | null;
+  content_type?: string | null;
+};
+
 export type UploadAudioResult = {
   filename: string;
   stored_filename?: string;

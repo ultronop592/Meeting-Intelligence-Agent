@@ -1,5 +1,6 @@
 
 from functools import lru_cache
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
  
  
@@ -95,6 +96,10 @@ class Settings(BaseSettings):
     s3_bucket_name:                  str = ""
     s3_region_name:                  str = "auto"
     s3_presigned_url_expire_seconds: int = 3600
+    # Set to false for storage providers that don't support S3 multipart uploads
+    # (e.g. Supabase Storage). When false, files are buffered and uploaded via
+    # a single put_object call, which works for all S3-compatible providers.
+    s3_multipart_enabled: bool = True
 
     # --- Audio chunking (for files > Groq 25 MB transcription limit) ---------
     # Duration of each chunk in seconds. 600 s = 10 min.
@@ -134,6 +139,39 @@ class Settings(BaseSettings):
     @property
     def langsmith_enabled(self) -> bool:
         return self.langchain_tracing_v2 and bool(self.langchain_api_key)
+
+    @property
+    def s3_supports_multipart(self) -> bool:
+        """Returns False for storage providers that don't support S3 multipart uploads.
+
+        Supabase Storage returns HTTP 540 on CreateMultipartUpload — multipart
+        must be avoided there.  We auto-detect by endpoint URL and also honour
+        the explicit S3_MULTIPART_ENABLED=false override in .env.
+        """
+        if not self.s3_multipart_enabled:
+            return False
+        endpoint = (self.s3_endpoint_url or "").lower()
+        # Supabase Storage S3 API does not support multipart uploads
+        if "supabase.co" in endpoint:
+            return False
+        return True
+
+    @property
+    def supabase_tus_endpoint(self) -> Optional[str]:
+        """Returns the Supabase TUS resumable-upload endpoint URL, or None if not applicable.
+
+        Derived from the S3 endpoint URL:
+          https://<project>.storage.supabase.co/storage/v1/s3
+          →  https://<project>.storage.supabase.co/storage/v1/upload/resumable
+        """
+        endpoint = (self.s3_endpoint_url or "").strip()
+        if not endpoint or "supabase.co" not in endpoint.lower():
+            return None
+        # Strip trailing /s3 (or /s3/) and replace with /upload/resumable
+        base = endpoint.rstrip("/")
+        if base.endswith("/s3"):
+            base = base[:-3]
+        return base.rstrip("/") + "/upload/resumable"
 
     @property
     def effective_openrouter_api_key(self) -> str:
