@@ -67,7 +67,7 @@ services:
       - key: S3_BUCKET_NAME
         sync: false
       - key: S3_REGION_NAME
-        value: "us-east-1"
+        value: "ap-southeast-1"
 
   # =============================================================================
   # Frontend Client Interface (Next.js App Router)
