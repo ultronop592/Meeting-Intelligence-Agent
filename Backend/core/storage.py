@@ -27,6 +27,8 @@ class StorageService:
     def is_s3_configured(self) -> bool:
         """Returns True if S3/R2 object storage credentials and bucket are configured."""
         backend = (settings.storage_backend or "local").lower().strip()
+        if backend != "s3":
+            return False
         has_bucket = bool(settings.s3_bucket_name and settings.s3_bucket_name.strip())
         has_keys = bool(
             settings.s3_access_key_id
@@ -34,7 +36,42 @@ class StorageService:
             and settings.s3_secret_access_key
             and settings.s3_secret_access_key.strip()
         )
-        return (backend == "s3" or has_bucket) and has_bucket and has_keys
+        return has_bucket and has_keys
+
+    async def _write_to_local_disk(
+        self,
+        storage_key: str,
+        buffer: bytearray,
+        file_obj=None,
+        max_bytes: int = 1024 * 1024 * 1024,
+        current_size: int = 0,
+    ) -> tuple[str, int]:
+        """Save buffered data + any remaining stream to local disk."""
+        os.makedirs(settings.upload_dir, exist_ok=True)
+        dest_path = os.path.join(settings.upload_dir, storage_key)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        total_size = current_size or len(buffer)
+
+        with open(dest_path, "wb") as f:
+            if buffer:
+                f.write(buffer)
+            if file_obj:
+                while True:
+                    chunk = await file_obj.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > max_bytes:
+                        if os.path.exists(dest_path):
+                            os.remove(dest_path)
+                        raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
+                    f.write(chunk)
+        if total_size == 0:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            raise ValueError("Uploaded file is empty")
+        logger.info("Saved %d bytes to local disk: %s", total_size, dest_path)
+        return storage_key, total_size
 
     def _get_s3_client(self):
         """Synchronously get or initialize the boto3 S3 client."""
@@ -54,6 +91,11 @@ class StorageService:
                 s3={"addressing_style": addressing_style},
                 request_checksum_calculation="when_required",
                 response_checksum_validation="when_required",
+                # Prevent SSL EOF on slow / rate-limited S3-compatible providers
+                # (e.g. Supabase Storage) by enforcing explicit socket timeouts.
+                connect_timeout=10,   # seconds to establish TCP connection
+                read_timeout=300,     # seconds to wait for data on large uploads
+                retries={"max_attempts": 3, "mode": "standard"},
             )
             client_kwargs = {
                 "service_name": "s3",
@@ -145,27 +187,7 @@ class StorageService:
 
         client = self._get_s3_client()
         if not client:
-            # Local storage fallback: stream chunks directly to disk
-            os.makedirs(settings.upload_dir, exist_ok=True)
-            dest_path = os.path.join(settings.upload_dir, storage_key)
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            total_size = 0
-            with open(dest_path, "wb") as f:
-                while True:
-                    chunk = await file_obj.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    total_size += len(chunk)
-                    if total_size > max_bytes:
-                        if os.path.exists(dest_path):
-                            os.remove(dest_path)
-                        raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
-                    f.write(chunk)
-            if total_size == 0:
-                if os.path.exists(dest_path):
-                    os.remove(dest_path)
-                raise ValueError("Uploaded file is empty")
-            return storage_key, total_size
+            return await self._write_to_local_disk(storage_key, bytearray(), file_obj, max_bytes)
 
         # S3 / Cloudflare R2 / Supabase S3 multipart streaming
         bucket = settings.s3_bucket_name.strip()
@@ -190,24 +212,38 @@ class StorageService:
         # Case A: File is smaller than or equal to 5 MB -> single put_object
         first_extra_chunk = await file_obj.read(READ_CHUNK_SIZE)
         if not first_extra_chunk:
-            await asyncio.to_thread(
-                client.put_object,
-                Bucket=bucket,
-                Key=storage_key,
-                Body=bytes(buffer),
-                ContentType=c_type,
-            )
-            logger.info("Directly put %d bytes to S3 key %s (single part)", total_size, storage_key)
-            return storage_key, total_size
+            try:
+                await asyncio.to_thread(
+                    client.put_object,
+                    Bucket=bucket,
+                    Key=storage_key,
+                    Body=bytes(buffer),
+                    ContentType=c_type,
+                )
+                logger.info("Directly put %d bytes to S3 key %s (single part)", total_size, storage_key)
+                return storage_key, total_size
+            except Exception as s3_err:
+                err_str = str(s3_err)
+                if "540" in err_str or "paused" in err_str.lower():
+                    logger.warning(
+                        "Supabase S3 returned HTTP 540 (Project paused) for key %s. "
+                        "Gracefully falling back to local disk storage.",
+                        storage_key,
+                    )
+                    return await self._write_to_local_disk(storage_key, buffer, None, max_bytes, total_size)
+                raise
 
         # Case B: File is larger than 5 MB
         buffer.extend(first_extra_chunk)
         total_size += len(first_extra_chunk)
 
-        # If the storage provider doesn't support multipart (e.g. Supabase returns
-        # HTTP 540 on CreateMultipartUpload), buffer the entire file and use a
-        # single put_object call instead.
+        # If the storage provider doesn't support multipart (e.g. Supabase),
+        # buffer the entire file and use a single put_object call.
         if not settings.s3_supports_multipart:
+            SUPABASE_SINGLE_PUT_LIMIT = 50 * 1024 * 1024  # 50 MB
+            endpoint_lower = (settings.s3_endpoint_url or "").lower()
+            is_supabase = "supabase.co" in endpoint_lower
+
             logger.info(
                 "Storage provider does not support multipart uploads — buffering full file for key %s",
                 storage_key,
@@ -220,15 +256,38 @@ class StorageService:
                 total_size += len(chunk)
                 if total_size > max_bytes:
                     raise ValueError(f"Uploaded file exceeds maximum allowed size of {max_bytes} bytes")
-            await asyncio.to_thread(
-                client.put_object,
-                Bucket=bucket,
-                Key=storage_key,
-                Body=bytes(buffer),
-                ContentType=c_type,
-            )
-            logger.info("Single put_object uploaded %d bytes to S3 key %s", total_size, storage_key)
-            return storage_key, total_size
+                # When using Supabase S3, files above 50 MB exceed Supabase's single PUT limit.
+                # Gracefully fall back to local disk storage so the upload succeeds.
+                if is_supabase and total_size > SUPABASE_SINGLE_PUT_LIMIT:
+                    logger.warning(
+                        "File exceeds Supabase S3 50 MB limit (%d bytes). "
+                        "Gracefully falling back to local disk storage to complete upload.",
+                        total_size,
+                    )
+                    return await self._write_to_local_disk(storage_key, buffer, file_obj, max_bytes, total_size)
+
+            import io as _io
+            try:
+                await asyncio.to_thread(
+                    client.put_object,
+                    Bucket=bucket,
+                    Key=storage_key,
+                    Body=_io.BytesIO(bytes(buffer)),
+                    ContentLength=total_size,
+                    ContentType=c_type,
+                )
+                logger.info("Single put_object uploaded %d bytes to S3 key %s", total_size, storage_key)
+                return storage_key, total_size
+            except Exception as s3_err:
+                err_str = str(s3_err)
+                if "540" in err_str or "paused" in err_str.lower():
+                    logger.warning(
+                        "Supabase S3 returned HTTP 540 (Project paused) for key %s. "
+                        "Gracefully falling back to local disk storage.",
+                        storage_key,
+                    )
+                    return await self._write_to_local_disk(storage_key, buffer, None, max_bytes, total_size)
+                raise
 
         mpu = await asyncio.to_thread(
             client.create_multipart_upload,

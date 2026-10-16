@@ -181,6 +181,7 @@ async def test_stream_upload_s3_multipart():
          patch.object(settings, "s3_bucket_name", "test-bucket"), \
          patch.object(settings, "s3_access_key_id", "test-key-id"), \
          patch.object(settings, "s3_secret_access_key", "test-secret-key"), \
+         patch.object(settings, "s3_endpoint_url", ""), \
          patch.object(service, "_get_s3_client", return_value=mock_client):
 
         saved_key, size = await service.stream_upload(mock_file, "audio/large.mp3", content_type="audio/mpeg")
@@ -220,6 +221,7 @@ async def test_stream_upload_s3_abort_on_error():
          patch.object(settings, "s3_bucket_name", "test-bucket"), \
          patch.object(settings, "s3_access_key_id", "test-key-id"), \
          patch.object(settings, "s3_secret_access_key", "test-secret-key"), \
+         patch.object(settings, "s3_endpoint_url", ""), \
          patch.object(service, "_get_s3_client", return_value=mock_client):
 
         with pytest.raises(RuntimeError, match="Network connection reset mid-upload"):
@@ -230,5 +232,33 @@ async def test_stream_upload_s3_abort_on_error():
             Key="audio/fail.mp3",
             UploadId="mock-abort-id-456",
         )
+
+
+@pytest.mark.asyncio
+async def test_stream_upload_fallback_on_540():
+    """Verify stream_upload falls back to local disk storage when Supabase returns HTTP 540."""
+    service = StorageService()
+    test_data = b"small audio bytes"
+    mock_file = MockAsyncStream(test_data)
+    mock_client = MagicMock()
+    mock_client.put_object.side_effect = Exception("An error occurred (540) when calling the PutObject operation: Project paused.")
+
+    with patch.object(settings, "storage_backend", "s3"), \
+         patch.object(settings, "s3_bucket_name", "meeting-intelligence"), \
+         patch.object(settings, "s3_access_key_id", "test-key"), \
+         patch.object(settings, "s3_secret_access_key", "test-secret"), \
+         patch.object(settings, "s3_endpoint_url", "https://xyz.storage.supabase.co/storage/v1/s3"), \
+         patch.object(service, "_get_s3_client", return_value=mock_client):
+
+        saved_key, size = await service.stream_upload(mock_file, "audio/fallback_540.mp3")
+        assert saved_key == "audio/fallback_540.mp3"
+        assert size == len(test_data)
+
+        local_path = os.path.join(settings.upload_dir, "audio/fallback_540.mp3")
+        assert os.path.exists(local_path)
+        with open(local_path, "rb") as f:
+            assert f.read() == test_data
+        os.remove(local_path)
+
 
 
