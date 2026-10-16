@@ -147,14 +147,28 @@ async def upload_audio(request: Request, file: UploadFile = File(...), current_u
     except ValueError as val_err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(val_err))
     except Exception as exc:
+        err_msg = str(exc)
+        if "540" in err_msg or "paused" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Supabase Storage project is currently paused (HTTP 540). "
+                    "Please visit your Supabase dashboard (https://supabase.com/dashboard) "
+                    "and unpause your project, or set STORAGE_BACKEND=local in Backend/.env to use local storage."
+                ),
+            )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to store uploaded file: {exc}")
     finally:
         await file.close()
 
+    local_path = os.path.join(settings.upload_dir, saved_key)
+    has_local = os.path.exists(local_path)
+
     return {
         "filename": file.filename,
         "stored_filename": unique_name,
-        "storage_key": saved_key if is_s3 else None,
+        "storage_key": saved_key if (is_s3 and not has_local) else None,
+        "audio_file_path": os.path.abspath(local_path) if has_local else None,
         "size_bytes": size_bytes,
         "size_mb": round(size_bytes / (1024 * 1024), 2),
     }

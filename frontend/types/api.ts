@@ -16,6 +16,7 @@ export type UploadResponse = {
   filename: string;
   stored_filename: string;
   storage_key?: string | null;
+  audio_file_path?: string | null;
   size_bytes: number;
   size_mb: number;
 };

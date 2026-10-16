@@ -232,7 +232,7 @@ async function uploadAudioDirectOrFallback(
     storage_key: upload.storage_key || undefined,
     audio_file_path: upload.storage_key
       ? undefined
-      : `${process.env.NEXT_PUBLIC_UPLOAD_DIR_HINT || "/tmp/meeting-agent-uploads"}/${upload.stored_filename}`,
+      : (upload.audio_file_path || `${process.env.NEXT_PUBLIC_UPLOAD_DIR_HINT || "/tmp/meeting-agent-uploads"}/${upload.stored_filename}`),
     size_bytes: upload.size_bytes,
     size_mb: upload.size_mb,
   };
