@@ -11,8 +11,10 @@ from eval.schema import PredictedDecision, ReferenceDecision
 
 
 def _tokenize(text: str) -> Set[str]:
-    cleaned = re.sub(r"[^\w\s]", " ", text.lower())
-    return {w for w in cleaned.split() if len(w) > 2}
+    # Normalize dollar amounts and numbers ($45,000 -> 45000)
+    norm = re.sub(r"\$(\d+),?(\d*)", r"\1\2", text.lower())
+    cleaned = re.sub(r"[^\w\s]", " ", norm)
+    return {w for w in cleaned.split() if len(w) >= 2}
 
 
 def _similarity(s1: str, s2: str) -> float:
@@ -20,7 +22,11 @@ def _similarity(s1: str, s2: str) -> float:
     t2 = _tokenize(s2)
     if not t1 or not t2:
         return 0.0
-    return len(t1.intersection(t2)) / len(t1.union(t2))
+    intersection = t1.intersection(t2)
+    jaccard = len(intersection) / len(t1.union(t2))
+    containment = len(intersection) / min(len(t1), len(t2))
+    # Blend Jaccard with containment for paraphrased sentences
+    return max(jaccard, containment * 0.75)
 
 
 def evaluate_decisions(

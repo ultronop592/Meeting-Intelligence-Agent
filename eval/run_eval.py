@@ -25,6 +25,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 from eval.metrics.action_items import evaluate_action_items
 from eval.metrics.decisions import evaluate_decisions
+from eval.metrics.diarization import calculate_der
 from eval.metrics.summary import calculate_heuristic_faithfulness, calculate_summary_coverage
 from eval.metrics.transcription import calculate_cer, calculate_wer
 from eval.schema import (
@@ -50,12 +51,17 @@ def load_meeting_pair(file_path: Path) -> Tuple[MeetingGroundTruth, MeetingPredi
 
 def evaluate_single_meeting(gt: MeetingGroundTruth, pred: MeetingPrediction) -> MeetingEvaluationResult:
     """Evaluate one meeting's predictions against ground truth."""
-    # 1. Transcription metrics
+    # 1. Transcription & Diarization metrics
     wer_val = None
     cer_val = None
+    der_val = None
     if pred.hypothesis_transcript:
         wer_val = calculate_wer(gt.reference_transcript, pred.hypothesis_transcript)
         cer_val = calculate_cer(gt.reference_transcript, pred.hypothesis_transcript)
+
+    if gt.speaker_turns and pred.speaker_turns:
+        der_dict = calculate_der(gt.speaker_turns, pred.speaker_turns)
+        der_val = der_dict["der"]
 
     # 2. Action items metrics
     ai_metrics = evaluate_action_items(gt.action_items, pred.action_items)
@@ -78,6 +84,7 @@ def evaluate_single_meeting(gt: MeetingGroundTruth, pred: MeetingPrediction) -> 
         title=gt.title or gt.meeting_id,
         wer=wer_val,
         cer=cer_val,
+        der=der_val,
         action_item_precision=ai_metrics["precision"],
         action_item_recall=ai_metrics["recall"],
         action_item_f1=ai_metrics["f1"],
@@ -111,6 +118,9 @@ def format_table(report: AggregateEvaluationReport) -> str:
     wer_str = f"{report.mean_wer:.2%}" if report.mean_wer is not None else "N/A"
     lines.append(f"| **Transcription WER** | `{wer_str}` | `< 12.0%` | {'[PASS]' if (report.mean_wer or 0) <= 0.12 else '[WARN]'} |")
 
+    der_str = f"{report.mean_der:.2%}" if report.mean_der is not None else "N/A"
+    lines.append(f"| **Diarization DER** | `{der_str}` | `< 18.0%` | {'[PASS]' if (report.mean_der or 0) <= 0.18 else '[WARN]'} |")
+
     lines.append(f"| **Action Item Precision** | `{report.mean_action_item_precision:.2%}` | `> 80.0%` | {'[PASS]' if report.mean_action_item_precision >= 0.8 else '[WARN]'} |")
     lines.append(f"| **Action Item Recall** | `{report.mean_action_item_recall:.2%}` | `> 75.0%` | {'[PASS]' if report.mean_action_item_recall >= 0.75 else '[WARN]'} |")
     lines.append(f"| **Action Item F1** | `{report.mean_action_item_f1:.2%}` | `> 78.0%` | {'[PASS]' if report.mean_action_item_f1 >= 0.78 else '[WARN]'} |")
@@ -135,17 +145,18 @@ def format_table(report: AggregateEvaluationReport) -> str:
     lines.append("")
     lines.append("### Per-Meeting Detail")
     lines.append("")
-    lines.append("| Meeting ID | Title | WER | Action F1 | Owner Acc | Date Acc | Decision F1 | Faithfulness | Latency |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("| Meeting ID | Title | WER | DER | Action F1 | Owner Acc | Date Acc | Decision F1 | Faithfulness | Latency |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
 
     for res in report.meeting_results:
         w = f"{res.wer:.2%}" if res.wer is not None else "N/A"
+        der_col = f"{res.der:.2%}" if res.der is not None else "N/A"
         o = f"{res.owner_accuracy:.2%}" if res.owner_accuracy is not None else "N/A"
         d = f"{res.due_date_accuracy:.2%}" if res.due_date_accuracy is not None else "N/A"
         f = f"{res.summary_faithfulness:.2%}" if res.summary_faithfulness is not None else "N/A"
         lat = f"{res.total_latency_ms:.0f} ms" if res.total_latency_ms is not None else "N/A"
         lines.append(
-            f"| `{res.meeting_id}` | {res.title} | {w} | {res.action_item_f1:.2%} | {o} | {d} | {res.decision_f1:.2%} | {f} | {lat} |"
+            f"| `{res.meeting_id}` | {res.title} | {w} | {der_col} | {res.action_item_f1:.2%} | {o} | {d} | {res.decision_f1:.2%} | {f} | {lat} |"
         )
 
     return "\n".join(lines)
@@ -184,6 +195,7 @@ def run_benchmark(dataset_dir: str = "eval/datasets", min_f1: float = 0.70, min_
 
     # Calculate aggregates
     wers = [r.wer for r in results if r.wer is not None]
+    ders = [r.der for r in results if r.der is not None]
     owner_accs = [r.owner_accuracy for r in results if r.owner_accuracy is not None]
     due_accs = [r.due_date_accuracy for r in results if r.due_date_accuracy is not None]
     faiths = [r.summary_faithfulness for r in results if r.summary_faithfulness is not None]
@@ -195,6 +207,7 @@ def run_benchmark(dataset_dir: str = "eval/datasets", min_f1: float = 0.70, min_
         dataset_name=Path(dataset_dir).name,
         total_meetings=len(results),
         mean_wer=round(sum(wers) / len(wers), 4) if wers else None,
+        mean_der=round(sum(ders) / len(ders), 4) if ders else None,
         mean_action_item_precision=round(sum(r.action_item_precision for r in results) / len(results), 4),
         mean_action_item_recall=round(sum(r.action_item_recall for r in results) / len(results), 4),
         mean_action_item_f1=round(sum(r.action_item_f1 for r in results) / len(results), 4),

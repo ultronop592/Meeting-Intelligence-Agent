@@ -14,19 +14,21 @@ from eval.schema import PredictedActionItem, ReferenceActionItem
 
 def _tokenize(text: str) -> Set[str]:
     """Tokenize and normalize text into a set of lower-case words."""
-    cleaned = re.sub(r"[^\w\s]", " ", text.lower())
-    return {w for w in cleaned.split() if len(w) > 2}
+    norm = re.sub(r"\$(\d+),?(\d*)", r"\1\2", text.lower())
+    cleaned = re.sub(r"[^\w\s]", " ", norm)
+    return {w for w in cleaned.split() if len(w) >= 2}
 
 
 def _similarity(s1: str, s2: str) -> float:
-    """Jaccard similarity between two strings."""
+    """Blended Jaccard and containment similarity between two strings."""
     tokens1 = _tokenize(s1)
     tokens2 = _tokenize(s2)
     if not tokens1 or not tokens2:
         return 0.0
     intersection = tokens1.intersection(tokens2)
-    union = tokens1.union(tokens2)
-    return len(intersection) / len(union)
+    jaccard = len(intersection) / len(tokens1.union(tokens2))
+    containment = len(intersection) / min(len(tokens1), len(tokens2))
+    return max(jaccard, containment * 0.75)
 
 
 def _match_owner(ref_owner: Optional[str], pred_owner: Optional[str]) -> bool:

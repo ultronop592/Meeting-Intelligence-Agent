@@ -11,14 +11,22 @@ eval/
 ├── README.md                          # Documentation and evaluation methodology
 ├── schema.py                          # Pydantic models for ground truth, predictions, and metrics
 ├── run_eval.py                        # Benchmark runner CLI script
+├── validate_dataset.py                # Schema and quality validator for dataset JSONs
+├── dataset_converter.py               # Corpus ingestion converter for QMSum / AMI / ICSI
 ├── metrics/
 │   ├── __init__.py
 │   ├── transcription.py               # WER and CER calculation (jiwer / DP Levenshtein)
+│   ├── diarization.py                 # Diarization Error Rate (DER) calculator
 │   ├── action_items.py                # Action item Precision, Recall, F1, Owner & Due-date accuracy
-│   ├── decisions.py                   # Decision Precision, Recall, and F1
-│   └── summary.py                     # Summary lexical coverage and factual faithfulness
+│   ├── decisions.py                   # Decision Precision, Recall, and F1 with semantic paraphrase matching
+│   ├── summary.py                     # Summary lexical coverage and factual faithfulness
+│   ├── llm_judge.py                   # LLM-as-a-judge claim extraction and factual verification
+│   └── judge_calibration.py           # Judge calibration benchmark across 30 human-labeled samples
 ├── datasets/
-│   └── sample_baseline_meeting.json   # Seed baseline benchmark meeting
+│   ├── sample_baseline_meeting.json   # Seed baseline benchmark meeting
+│   ├── meeting_02_eng_architecture.json # Architecture review (queues, verifiers, encryption)
+│   ├── meeting_03_hinglish_product_sync.json # Hinglish code-switched product sync
+│   └── meeting_04_qmsum_academic_budget.json # QMSum academic resource committee
 └── results/
     ├── baseline_report.json           # Machine-readable evaluation report
     └── baseline_report.md             # Rendered markdown benchmark summary

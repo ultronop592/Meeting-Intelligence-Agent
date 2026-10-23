@@ -80,9 +80,10 @@ class MeetingEvaluationResult(BaseModel):
     meeting_id: str
     title: str = ""
 
-    # Transcription
+    # Transcription & Diarization
     wer: Optional[float] = None
     cer: Optional[float] = None
+    der: Optional[float] = None
 
     # Action Items
     action_item_precision: float = 0.0
@@ -117,6 +118,7 @@ class AggregateEvaluationReport(BaseModel):
 
     # Aggregate metric means
     mean_wer: Optional[float] = None
+    mean_der: Optional[float] = None
     mean_action_item_precision: float = 0.0
     mean_action_item_recall: float = 0.0
     mean_action_item_f1: float = 0.0
