@@ -1,0 +1,134 @@
+{
+  "ground_truth": {
+    "meeting_id": "sample-standup-001",
+    "title": "Weekly Engineering Standup & Sprint Planning",
+    "language": "en",
+    "reference_transcript": "Alice: Good morning everyone, let's start our sprint check-in. Bob, how are things looking on the database optimization? Bob: Morning Alice. I noticed query response times on the meetings list have climbed under concurrent load. I propose adding composite indexes to the meetings and action items tables. I will implement and test these composite indexes by Friday, October 25th. Alice: That sounds critical, approved. Charlie, what is the status of the analytics dashboard? Charlie: The dashboard is functioning well, but there is an accessibility issue with text contrast on the responsive charts in dark mode. I will fix the responsive chart contrast by Thursday, October 26th. Alice: Great. Next item: we decided to enable automatic local storage fallback whenever our cloud storage provider returns a paused status or errors out, so uploads never fail. Does everyone agree? Bob: Yes, agreed. Charlie: Agreed. Also, we will keep audio chunk duration set to 10 minutes to respect Whisper limits. Alice: Wonderful. Finally, I will draft the release notes for our v1 baseline deployment by Monday, October 28th. Let's get to work.",
+    "speaker_turns": [
+      {
+        "speaker": "Alice",
+        "start": 0.0,
+        "end": 8.5,
+        "text": "Good morning everyone, let's start our sprint check-in. Bob, how are things looking on the database optimization?"
+      },
+      {
+        "speaker": "Bob",
+        "start": 8.6,
+        "end": 23.0,
+        "text": "Morning Alice. I noticed query response times on the meetings list have climbed under concurrent load. I propose adding composite indexes to the meetings and action items tables. I will implement and test these composite indexes by Friday, October 25th."
+      },
+      {
+        "speaker": "Alice",
+        "start": 23.1,
+        "end": 26.0,
+        "text": "That sounds critical, approved. Charlie, what is the status of the analytics dashboard?"
+      },
+      {
+        "speaker": "Charlie",
+        "start": 26.1,
+        "end": 37.0,
+        "text": "The dashboard is functioning well, but there is an accessibility issue with text contrast on the responsive charts in dark mode. I will fix the responsive chart contrast by Thursday, October 26th."
+      },
+      {
+        "speaker": "Alice",
+        "start": 37.1,
+        "end": 50.0,
+        "text": "Great. Next item: we decided to enable automatic local storage fallback whenever our cloud storage provider returns a paused status or errors out, so uploads never fail. Does everyone agree?"
+      },
+      {
+        "speaker": "Bob",
+        "start": 50.1,
+        "end": 52.0,
+        "text": "Yes, agreed."
+      },
+      {
+        "speaker": "Charlie",
+        "start": 52.1,
+        "end": 58.0,
+        "text": "Agreed. Also, we will keep audio chunk duration set to 10 minutes to respect Whisper limits."
+      },
+      {
+        "speaker": "Alice",
+        "start": 58.1,
+        "end": 68.0,
+        "text": "Wonderful. Finally, I will draft the release notes for our v1 baseline deployment by Monday, October 28th. Let's get to work."
+      }
+    ],
+    "action_items": [
+      {
+        "description": "Implement and test composite database indexes on the meetings and action items tables",
+        "owner": "Bob",
+        "due_date": "2026-10-25",
+        "priority": "high"
+      },
+      {
+        "description": "Fix text contrast on responsive charts in dark mode for the analytics dashboard",
+        "owner": "Charlie",
+        "due_date": "2026-10-26",
+        "priority": "medium"
+      },
+      {
+        "description": "Draft release notes for the v1 baseline deployment",
+        "owner": "Alice",
+        "due_date": "2026-10-28",
+        "priority": "low"
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Enable automatic local storage fallback whenever cloud storage is paused or fails",
+        "rationale": "Ensures meeting uploads never fail even when free-tier cloud storage services are paused"
+      },
+      {
+        "decision": "Set audio chunking duration to 10 minutes",
+        "rationale": "Keeps chunk payloads well below Whisper 25 MB per-request limit"
+      }
+    ],
+    "reference_summary": "The engineering team reviewed sprint priorities. Bob will implement composite database indexes by Friday, October 25 to improve query performance. Charlie will fix dark mode contrast on responsive analytics charts by Thursday, October 26. Alice will draft the v1 baseline release notes by October 28. The team agreed on automatic local storage fallback when cloud storage is paused and confirmed 10-minute audio chunking."
+  },
+  "prediction": {
+    "meeting_id": "sample-standup-001",
+    "hypothesis_transcript": "Alice: Good morning everyone, let's start our sprint check-in. Bob, how are things looking on the database optimization? Bob: Morning Alice. I noticed query response times on the meetings list have climbed under concurrent load. I propose adding composite indexes to the meetings and action items tables. I will implement and test these composite indexes by Friday, October 25th. Alice: That sounds critical, approved. Charlie, what is the status of the analytics dashboard? Charlie: The dashboard is functioning well, but there is an accessibility issue with text contrast on the responsive charts in dark mode. I will fix the responsive chart contrast by Thursday, October 26th. Alice: Great. Next item: we decided to enable automatic local storage fallback whenever our cloud storage provider returns a paused status or errors out, so uploads never fail. Does everyone agree? Bob: Yes, agreed. Charlie: Agreed. Also, we will keep audio chunk duration set to 10 minutes to respect Whisper limits. Alice: Wonderful. Finally, I will draft the release notes for our v1 baseline deployment by Monday, October 28th. Let's get to work.",
+    "action_items": [
+      {
+        "description": "Implement composite database indexes on meetings and action items tables",
+        "owner": "Bob",
+        "due_date": "2026-10-25",
+        "priority": "high",
+        "confidence": 0.95
+      },
+      {
+        "description": "Fix accessibility text contrast on responsive charts in analytics dashboard",
+        "owner": "Charlie",
+        "due_date": "2026-10-26",
+        "priority": "medium",
+        "confidence": 0.92
+      },
+      {
+        "description": "Draft release notes for the v1 baseline deployment",
+        "owner": "Alice",
+        "due_date": "2026-10-28",
+        "priority": "low",
+        "confidence": 0.98
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Enable automatic local storage fallback when cloud storage returns paused status",
+        "rationale": "Prevents failed audio uploads when cloud storage is unavailable"
+      },
+      {
+        "decision": "Configure audio chunk duration to 10 minutes",
+        "rationale": "Ensures chunks stay below Whisper 25 MB payload limit"
+      }
+    ],
+    "generated_summary": "In this sprint check-in, the engineering team aligned on key tasks and architecture decisions. Bob is implementing composite database indexes on meetings and action items by October 25th. Charlie will fix text contrast on responsive charts by October 26th. Alice will write the v1 baseline release notes by October 28th. The team confirmed automatic local disk storage fallback during cloud storage downtime and adopted 10-minute audio chunking.",
+    "node_latencies_ms": {
+      "transcribe_audio": 3120.0,
+      "extract_information": 1450.0,
+      "generate_summary": 1210.0,
+      "save_to_database": 180.0
+    },
+    "cost_usd": 0.0038
+  }
+}
