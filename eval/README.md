@@ -99,9 +99,14 @@ Every test case in `eval/datasets/` is a JSON file conforming to `eval/schema.py
 
 ## 4. Running Benchmarks
 
-### Using Python directly:
+### Using Python directly (Pre-computed baseline):
 ```bash
 python -m eval.run_eval
+```
+
+### Live Multi-Agent Pipeline Execution:
+```bash
+python -m eval.run_eval --live
 ```
 
 ### With custom thresholds for CI:
@@ -111,7 +116,8 @@ python -m eval.run_eval --dataset-dir eval/datasets --min-f1 0.75 --min-faithful
 
 ### Using Make:
 ```bash
-make eval
+make eval         # Run pre-computed benchmark suite
+make eval-live    # Execute live LangGraph pipeline and score against ground truth
 ```
 
 ---

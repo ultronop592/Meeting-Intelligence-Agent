@@ -1,8 +1,9 @@
-.PHONY: eval eval-calibrate eval-validate test up down build clean help
+.PHONY: eval eval-live eval-calibrate eval-validate test up down build clean help
 
 help:
 	@echo "Meeting Intelligence Agent Commands:"
-	@echo "  make eval           Run the evaluation benchmark harness across test meetings"
+	@echo "  make eval           Run evaluation benchmark harness across test meetings"
+	@echo "  make eval-live      Execute live multi-agent pipeline and score predictions"
 	@echo "  make eval-calibrate Run LLM Judge calibration across 30 human-labeled samples"
 	@echo "  make eval-validate  Validate schemas and formatting of all dataset JSON files"
 	@echo "  make up             Start backend and frontend stack with docker compose"
@@ -12,6 +13,9 @@ help:
 
 eval:
 	python -m eval.run_eval
+
+eval-live:
+	python -m eval.run_eval --live
 
 eval-calibrate:
 	python -m eval.metrics.judge_calibration

@@ -254,6 +254,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-dir", default="eval/datasets", help="Path to directory containing meeting benchmark JSONs")
     parser.add_argument("--min-f1", type=float, default=0.70, help="Minimum acceptable Action Item F1 threshold")
     parser.add_argument("--min-faithfulness", type=float, default=0.70, help="Minimum acceptable Summary Faithfulness threshold")
+    parser.add_argument("--live", action="store_true", help="Run live multi-agent pipeline instead of pre-computed predictions")
+    parser.add_argument("--update-predictions", action="store_true", help="Update dataset JSON files with live agent predictions")
     args = parser.parse_args()
+
+    if args.live:
+        from eval.pipeline_eval import run_live_benchmark
+        sys.exit(run_live_benchmark(args.dataset_dir, update_datasets=args.update_predictions))
 
     sys.exit(run_benchmark(args.dataset_dir, min_f1=args.min_f1, min_faithfulness=args.min_faithfulness))
