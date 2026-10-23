@@ -1,0 +1,121 @@
+{
+  "ground_truth": {
+    "meeting_id": "qmsum-budget-004",
+    "title": "Faculty Research & Lab Equipment Allocation Committee",
+    "language": "en",
+    "reference_transcript": "Dean Vance: Welcome colleagues to the quarterly research resource committee. Professor Higgins, what is our standing on high-performance compute allocations? Professor Higgins: Our shared GPU cluster is running at 94% utilization, causing bottleneck delays for student dissertation research. I propose requisitioning four additional dedicated server nodes. I will compile the detailed vendor cost breakdown and RFP specifications by November 9th. Dean Vance: Very reasonable. Dr. Thorne, how is the laboratory safety compliance audit proceeding? Dr. Thorne: The inspection discovered two chemical storage ventilation units requiring certified recalibration. I will schedule the certified technicians and submit the compliance sign-off report by November 12th. Dean Vance: Thank you. Let us record our official decisions: First, we approve the emergency capital expenditure budget of forty-five thousand dollars for GPU cluster expansion. Do all members consent? Professor Higgins: Yes, consented. Dr. Thorne: Consented. Dean Vance: Second, we decide that all laboratory access badges will be temporarily suspended if safety audits are not completed within thirty days of notice.",
+    "speaker_turns": [
+      {
+        "speaker": "Dean Vance",
+        "start": 0.0,
+        "end": 8.5,
+        "text": "Welcome colleagues to the quarterly research resource committee. Professor Higgins, what is our standing on high-performance compute allocations?"
+      },
+      {
+        "speaker": "Professor Higgins",
+        "start": 8.6,
+        "end": 26.0,
+        "text": "Our shared GPU cluster is running at 94% utilization, causing bottleneck delays for student dissertation research. I propose requisitioning four additional dedicated server nodes. I will compile the detailed vendor cost breakdown and RFP specifications by November 9th."
+      },
+      {
+        "speaker": "Dean Vance",
+        "start": 26.1,
+        "end": 30.5,
+        "text": "Very reasonable. Dr. Thorne, how is the laboratory safety compliance audit proceeding?"
+      },
+      {
+        "speaker": "Dr. Thorne",
+        "start": 30.6,
+        "end": 44.0,
+        "text": "The inspection discovered two chemical storage ventilation units requiring certified recalibration. I will schedule the certified technicians and submit the compliance sign-off report by November 12th."
+      },
+      {
+        "speaker": "Dean Vance",
+        "start": 44.1,
+        "end": 60.0,
+        "text": "Thank you. Let us record our official decisions: First, we approve the emergency capital expenditure budget of forty-five thousand dollars for GPU cluster expansion. Do all members consent?"
+      },
+      {
+        "speaker": "Professor Higgins",
+        "start": 60.1,
+        "end": 61.5,
+        "text": "Yes, consented."
+      },
+      {
+        "speaker": "Dr. Thorne",
+        "start": 61.6,
+        "end": 63.0,
+        "text": "Consented."
+      },
+      {
+        "speaker": "Dean Vance",
+        "start": 63.1,
+        "end": 74.0,
+        "text": "Second, we decide that all laboratory access badges will be temporarily suspended if safety audits are not completed within thirty days of notice."
+      }
+    ],
+    "action_items": [
+      {
+        "description": "Compile vendor cost breakdown and RFP specifications for four GPU cluster nodes",
+        "owner": "Professor Higgins",
+        "due_date": "2026-11-09",
+        "priority": "high"
+      },
+      {
+        "description": "Schedule certified technicians for chemical ventilation and submit compliance sign-off",
+        "owner": "Dr. Thorne",
+        "due_date": "2026-11-12",
+        "priority": "high"
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Approve $45,000 emergency capital expenditure for GPU cluster expansion",
+        "rationale": "Resolves 94% compute bottleneck impeding dissertation research"
+      },
+      {
+        "decision": "Mandate temporary suspension of lab access badges if safety audits are uncompleted within 30 days",
+        "rationale": "Enforces strict institutional chemical safety protocols"
+      }
+    ],
+    "reference_summary": "Dean Vance convened the research resource committee. Professor Higgins will prepare an RFP for four GPU nodes by November 9 to alleviate cluster bottlenecks. Dr. Thorne will coordinate chemical ventilation repairs and file safety sign-offs by November 12. The committee approved a $45,000 budget for cluster expansion and decided to suspend lab access for non-compliance within 30 days."
+  },
+  "prediction": {
+    "meeting_id": "qmsum-budget-004",
+    "hypothesis_transcript": "Dean Vance: Welcome colleagues to the quarterly research resource committee. Professor Higgins, what is our standing on high-performance compute allocations? Professor Higgins: Our shared GPU cluster is running at 94% utilization, causing bottleneck delays for student dissertation research. I propose requisitioning four additional dedicated server nodes. I will compile the detailed vendor cost breakdown and RFP specifications by November 9th. Dean Vance: Very reasonable. Dr. Thorne, how is the laboratory safety compliance audit proceeding? Dr. Thorne: The inspection discovered two chemical storage ventilation units requiring certified recalibration. I will schedule the certified technicians and submit the compliance sign-off report by November 12th. Dean Vance: Thank you. Let us record our official decisions: First, we approve the emergency capital expenditure budget of forty-five thousand dollars for GPU cluster expansion. Do all members consent? Professor Higgins: Yes, consented. Dr. Thorne: Consented. Dean Vance: Second, we decide that all laboratory access badges will be temporarily suspended if safety audits are not completed within thirty days of notice.",
+    "action_items": [
+      {
+        "description": "Professor Higgins to compile vendor cost breakdown and RFP for four GPU nodes",
+        "owner": "Professor Higgins",
+        "due_date": "2026-11-09",
+        "priority": "high",
+        "confidence": 0.95
+      },
+      {
+        "description": "Dr. Thorne to schedule certified ventilation technicians and submit compliance report",
+        "owner": "Dr. Thorne",
+        "due_date": "2026-11-12",
+        "priority": "high",
+        "confidence": 0.91
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Approve $45,000 capital expenditure budget for GPU expansion",
+        "rationale": "Relieves severe student research compute bottleneck"
+      },
+      {
+        "decision": "Suspend laboratory access badges for uncompleted audits after 30 days",
+        "rationale": "Enforces institutional ventilation safety requirements"
+      }
+    ],
+    "generated_summary": "In this resource allocation meeting, the committee addressed compute constraints and ventilation compliance. Professor Higgins is preparing a GPU RFP by November 9th. Dr. Thorne is organizing ventilation recalibration by November 12th. The committee approved a $45,000 GPU expansion budget and enacted a 30-day compliance rule for lab access.",
+    "node_latencies_ms": {
+      "transcribe_audio": 3250.0,
+      "extract_information": 1490.0,
+      "generate_summary": 1260.0,
+      "save_to_database": 180.0
+    },
+    "cost_usd": 0.0039
+  }
+}

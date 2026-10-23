@@ -1,0 +1,134 @@
+{
+  "ground_truth": {
+    "meeting_id": "arch-review-002",
+    "title": "Core Architecture Review: Durable Queue & Agentic Verifier",
+    "language": "en",
+    "reference_transcript": "David: Let's begin the architectural review for our next development cycle. Elena, can you walk us through the durability issues in our current background task processing? Elena: Currently, background tasks run directly inside the FastAPI process via BackgroundTasks. If the web worker terminates or restarts mid-job during a long transcription, the processing state is lost. I propose migrating our background pipeline to an asynchronous Redis queue with persistent checkpoints after each graph node. I will build the prototype using Redis streams and persistence checkpoints by November 2nd. David: That is high priority. Priya, what about the LLM extraction accuracy? Priya: The extraction prompt occasionally outputs hallucinations or attributes action items to participants who merely asked a question. We need a second-pass verifier agent that demands an exact verbatim quote and timestamp from the transcript before accepting any action item. I will design the verifier prompt and schema validator by November 5th. David: Excellent. Now for decisions: We formally decide to require supporting transcript quotes for all extracted action items. If an item lacks supporting evidence, it must be flagged for human review. Elena: Agreed. Priya: Agreed. David: Also, we decide to adopt AES-256 GCM encryption for storing third-party user credentials like Jira and Slack tokens. I will update the security specification document by November 6th.",
+    "speaker_turns": [
+      {
+        "speaker": "David",
+        "start": 0.0,
+        "end": 9.5,
+        "text": "Let's begin the architectural review for our next development cycle. Elena, can you walk us through the durability issues in our current background task processing?"
+      },
+      {
+        "speaker": "Elena",
+        "start": 9.6,
+        "end": 28.0,
+        "text": "Currently, background tasks run directly inside the FastAPI process via BackgroundTasks. If the web worker terminates or restarts mid-job during a long transcription, the processing state is lost. I propose migrating our background pipeline to an asynchronous Redis queue with persistent checkpoints after each graph node. I will build the prototype using Redis streams and persistence checkpoints by November 2nd."
+      },
+      {
+        "speaker": "David",
+        "start": 28.1,
+        "end": 31.5,
+        "text": "That is high priority. Priya, what about the LLM extraction accuracy?"
+      },
+      {
+        "speaker": "Priya",
+        "start": 31.6,
+        "end": 48.0,
+        "text": "The extraction prompt occasionally outputs hallucinations or attributes action items to participants who merely asked a question. We need a second-pass verifier agent that demands an exact verbatim quote and timestamp from the transcript before accepting any action item. I will design the verifier prompt and schema validator by November 5th."
+      },
+      {
+        "speaker": "David",
+        "start": 48.1,
+        "end": 64.0,
+        "text": "Excellent. Now for decisions: We formally decide to require supporting transcript quotes for all extracted action items. If an item lacks supporting evidence, it must be flagged for human review."
+      },
+      {
+        "speaker": "Elena",
+        "start": 64.1,
+        "end": 65.5,
+        "text": "Agreed."
+      },
+      {
+        "speaker": "Priya",
+        "start": 65.6,
+        "end": 67.0,
+        "text": "Agreed."
+      },
+      {
+        "speaker": "David",
+        "start": 67.1,
+        "end": 78.0,
+        "text": "Also, we decide to adopt AES-256 GCM encryption for storing third-party user credentials like Jira and Slack tokens. I will update the security specification document by November 6th."
+      }
+    ],
+    "action_items": [
+      {
+        "description": "Build prototype asynchronous Redis queue with node-level persistence checkpoints",
+        "owner": "Elena",
+        "due_date": "2026-11-02",
+        "priority": "high"
+      },
+      {
+        "description": "Design second-pass verifier agent prompt and schema validator requiring supporting quotes",
+        "owner": "Priya",
+        "due_date": "2026-11-05",
+        "priority": "high"
+      },
+      {
+        "description": "Update the platform security specification document for AES-256 GCM credential encryption",
+        "owner": "David",
+        "due_date": "2026-11-06",
+        "priority": "medium"
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Require supporting transcript quotes for all extracted action items or flag for review",
+        "rationale": "Prevents hallucinated action items and incorrect speaker attribution"
+      },
+      {
+        "decision": "Adopt AES-256 GCM encryption for storing third-party integration credentials",
+        "rationale": "Ensures authenticated encryption for sensitive user API tokens"
+      }
+    ],
+    "reference_summary": "The architecture review focused on pipeline durability and extraction accuracy. Elena will prototype a Redis queue with persistent checkpoints by November 2. Priya will create a second-pass verifier agent requiring verbatim transcript quotes by November 5. David will update the security spec for AES-256 GCM encryption by November 6. The team decided to require quote evidence for all action items and mandate authenticated credential encryption."
+  },
+  "prediction": {
+    "meeting_id": "arch-review-002",
+    "hypothesis_transcript": "David: Let's begin the architectural review for our next development cycle. Elena, can you walk us through the durability issues in our current background task processing? Elena: Currently, background tasks run directly inside the FastAPI process via BackgroundTasks. If the web worker terminates or restarts mid-job during a long transcription, the processing state is lost. I propose migrating our background pipeline to an asynchronous Redis queue with persistent checkpoints after each graph node. I will build the prototype using Redis streams and persistence checkpoints by November 2nd. David: That is high priority. Priya, what about the LLM extraction accuracy? Priya: The extraction prompt occasionally outputs hallucinations or attributes action items to participants who merely asked a question. We need a second-pass verifier agent that demands an exact verbatim quote and timestamp from the transcript before accepting any action item. I will design the verifier prompt and schema validator by November 5th. David: Excellent. Now for decisions: We formally decide to require supporting transcript quotes for all extracted action items. If an item lacks supporting evidence, it must be flagged for human review. Elena: Agreed. Priya: Agreed. David: Also, we decide to adopt AES-256 GCM encryption for storing third-party user credentials like Jira and Slack tokens. I will update the security specification document by November 6th.",
+    "action_items": [
+      {
+        "description": "Elena to prototype Redis queue with node-level checkpoints",
+        "owner": "Elena",
+        "due_date": "2026-11-02",
+        "priority": "high",
+        "confidence": 0.94
+      },
+      {
+        "description": "Priya to design second-pass verifier agent requiring transcript quotes",
+        "owner": "Priya",
+        "due_date": "2026-11-05",
+        "priority": "high",
+        "confidence": 0.91
+      },
+      {
+        "description": "David to update security specification for AES-256 GCM credential storage",
+        "owner": "David",
+        "due_date": "2026-11-06",
+        "priority": "medium",
+        "confidence": 0.89
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Require supporting transcript quotes for all action items",
+        "rationale": "Mitigates extraction hallucinations and ensures evidence tracking"
+      },
+      {
+        "decision": "Implement AES-256 GCM authenticated encryption for third-party credentials",
+        "rationale": "Safeguards user Jira and Slack API tokens"
+      }
+    ],
+    "generated_summary": "During this architecture review, the team addressed background durability and extraction fidelity. Elena is developing a Redis queue prototype by November 2. Priya is designing a verifier agent with quote verification by November 5. David will update the credential encryption documentation by November 6. The team formally agreed on requiring transcript quotes for action items and encrypting integration tokens with AES-256 GCM.",
+    "node_latencies_ms": {
+      "transcribe_audio": 3410.0,
+      "extract_information": 1620.0,
+      "generate_summary": 1340.0,
+      "save_to_database": 195.0
+    },
+    "cost_usd": 0.0041
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "ground_truth": {
+    "meeting_id": "hinglish-sync-003",
+    "title": "Product & Integrations Sync (Hinglish Code-Switched)",
+    "language": "hinglish",
+    "reference_transcript": "Rohit: Haan team, let's start today's sync. Neha, mobile upload screen ka kya update hai? Neha: Mobile browser par upload karte waqt jab connection unstable hota hai, upload drop ho raha hai. Maine test kiya hai aur TUS resumable upload ka retry mechanism tune karna padega. Aman: Haan Rohit, main is issue ko own karta hoon. Main automatic retry logic aur offline indicator implement kar doonga by Friday, October 30th. Rohit: Bohot badhiya Aman. Aur Neha, what about the Jira and Google Calendar settings page? Neha: Jira per-user OAuth and webhook notification flow ready hai, bas documentation pending hai. Main Tuesday, November 3rd tak complete guide and test credentials publish kar doongi. Rohit: Perfect. Now regarding decisions: We decide to make TUS resumable upload the mandatory default for all mobile recordings. Sab agree karte hain? Aman: Haan, bilkul agreed. Neha: Agreed. Rohit: And we also decide to limit maximum email reminders to two notifications per overdue action item taaki users ko spam na feel ho.",
+    "speaker_turns": [
+      {
+        "speaker": "Rohit",
+        "start": 0.0,
+        "end": 8.0,
+        "text": "Haan team, let's start today's sync. Neha, mobile upload screen ka kya update hai?"
+      },
+      {
+        "speaker": "Neha",
+        "start": 8.1,
+        "end": 22.0,
+        "text": "Mobile browser par upload karte waqt jab connection unstable hota hai, upload drop ho raha hai. Maine test kiya hai aur TUS resumable upload ka retry mechanism tune karna padega."
+      },
+      {
+        "speaker": "Aman",
+        "start": 22.1,
+        "end": 35.0,
+        "text": "Haan Rohit, main is issue ko own karta hoon. Main automatic retry logic aur offline indicator implement kar doonga by Friday, October 30th."
+      },
+      {
+        "speaker": "Rohit",
+        "start": 35.1,
+        "end": 42.0,
+        "text": "Bohot badhiya Aman. Aur Neha, what about the Jira and Google Calendar settings page?"
+      },
+      {
+        "speaker": "Neha",
+        "start": 42.1,
+        "end": 56.0,
+        "text": "Jira per-user OAuth and webhook notification flow ready hai, bas documentation pending hai. Main Tuesday, November 3rd tak complete guide and test credentials publish kar doongi."
+      },
+      {
+        "speaker": "Rohit",
+        "start": 56.1,
+        "end": 70.0,
+        "text": "Perfect. Now regarding decisions: We decide to make TUS resumable upload the mandatory default for all mobile recordings. Sab agree karte hain?"
+      },
+      {
+        "speaker": "Aman",
+        "start": 70.1,
+        "end": 72.0,
+        "text": "Haan, bilkul agreed."
+      },
+      {
+        "speaker": "Neha",
+        "start": 72.1,
+        "end": 73.5,
+        "text": "Agreed."
+      },
+      {
+        "speaker": "Rohit",
+        "start": 73.6,
+        "end": 84.0,
+        "text": "And we also decide to limit maximum email reminders to two notifications per overdue action item taaki users ko spam na feel ho."
+      }
+    ],
+    "action_items": [
+      {
+        "description": "Implement automatic retry logic and offline network indicator for mobile uploads",
+        "owner": "Aman",
+        "due_date": "2026-10-30",
+        "priority": "high"
+      },
+      {
+        "description": "Publish complete guide and test credentials for Jira per-user OAuth setup",
+        "owner": "Neha",
+        "due_date": "2026-11-03",
+        "priority": "medium"
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Make TUS resumable upload the mandatory default protocol for mobile browser recordings",
+        "rationale": "Prevents failed audio uploads on unstable cellular network connections"
+      },
+      {
+        "decision": "Cap overdue action item email reminders at a maximum of two notifications",
+        "rationale": "Prevents alert fatigue and spam for team members"
+      }
+    ],
+    "reference_summary": "In this Hinglish product sync, Rohit, Neha, and Aman reviewed mobile stability and integration setup. Aman will implement auto-retry logic for mobile uploads by October 30. Neha will publish documentation for Jira per-user OAuth by November 3. The team decided to enforce TUS resumable upload as the default on mobile devices and capped overdue reminder emails at two per task."
+  },
+  "prediction": {
+    "meeting_id": "hinglish-sync-003",
+    "hypothesis_transcript": "Rohit: Haan team, let's start today's sync. Neha, mobile upload screen ka kya update hai? Neha: Mobile browser par upload karte waqt jab connection unstable hota hai, upload drop ho raha hai. Maine test kiya hai aur TUS resumable upload ka retry mechanism tune karna padega. Aman: Haan Rohit, main is issue ko own karta hoon. Main automatic retry logic aur offline indicator implement kar doonga by Friday, October 30th. Rohit: Bohot badhiya Aman. Aur Neha, what about the Jira and Google Calendar settings page? Neha: Jira per-user OAuth and webhook notification flow ready hai, bas documentation pending hai. Main Tuesday, November 3rd tak complete guide and test credentials publish kar doongi. Rohit: Perfect. Now regarding decisions: We decide to make TUS resumable upload the mandatory default for all mobile recordings. Sab agree karte hain? Aman: Haan, bilkul agreed. Neha: Agreed. Rohit: And we also decide to limit maximum email reminders to two notifications per overdue action item taaki users ko spam na feel ho.",
+    "action_items": [
+      {
+        "description": "Aman to implement automatic retry logic and offline indicator for mobile recordings",
+        "owner": "Aman",
+        "due_date": "2026-10-30",
+        "priority": "high",
+        "confidence": 0.93
+      },
+      {
+        "description": "Neha to publish guide and setup credentials for Jira OAuth integration",
+        "owner": "Neha",
+        "due_date": "2026-11-03",
+        "priority": "medium",
+        "confidence": 0.90
+      }
+    ],
+    "decisions": [
+      {
+        "decision": "Make TUS resumable upload the default for mobile recordings",
+        "rationale": "Mitigates upload failures on erratic mobile networks"
+      },
+      {
+        "decision": "Limit overdue action item email reminders to two notifications",
+        "rationale": "Prevents user notification fatigue"
+      }
+    ],
+    "generated_summary": "During the product synchronization call, the team reviewed mobile upload resilience and tool configuration. Aman is implementing retry logic and offline detection by October 30th. Neha is completing Jira OAuth documentation by November 3rd. The team decided to standardize on TUS uploads for mobile devices and restrict overdue reminders to two emails.",
+    "node_latencies_ms": {
+      "transcribe_audio": 3190.0,
+      "extract_information": 1510.0,
+      "generate_summary": 1280.0,
+      "save_to_database": 185.0
+    },
+    "cost_usd": 0.0039
+  }
+}
