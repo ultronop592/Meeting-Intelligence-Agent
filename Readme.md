@@ -1,8 +1,8 @@
 # Meeting Intelligence Agent
 
-Enterprise AI Meeting Intelligence and Workflow Automation Platform
+Open-Source Meeting Intelligence Agent and Workflow Automation System
 
-The Meeting Intelligence Agent is an enterprise-grade artificial intelligence platform designed to ingest meeting audio and video recordings of any duration, process them through an agentic multi-stage pipeline, extract structured intelligence, index records into a persistent vector memory layer, generate cross-meeting analytical insights, and synchronize deliverables across workplace communication and productivity tools.
+The Meeting Intelligence Agent is an open-source meeting intelligence system designed to ingest meeting audio and video recordings, process them through an agentic multi-stage pipeline, extract structured intelligence, index records into a persistent vector memory layer, generate cross-meeting analytical insights, and synchronize deliverables across workplace communication and productivity tools.
 
 ---
 
@@ -12,7 +12,7 @@ Modern organizations spend countless hours in discussions where critical decisio
 
 The platform provides end-to-end automation from the moment an audio recording is uploaded or recorded live to the final execution of follow-up tasks:
 
-* Ingests multimedia recordings of arbitrary size and format, applying automated segmentation when files exceed processing limits, or captures audio directly within the browser using the HTML5 MediaRecorder API.
+* Ingests multimedia recordings (tested up to 1 GB), applying automated segmentation when files exceed processing limits, or captures audio directly within the browser using the HTML5 MediaRecorder API.
 * Resolves speaker identities through acoustic diarization, attributing spoken dialogue to specific contributors.
 * Transcribes audio using high-accuracy speech models and extracts structured data entities including action items, owners, deadlines, priority levels, and formal decisions with contextual rationale.
 * Synthesizes executive summaries and comprehensive meeting minutes.
@@ -77,7 +77,7 @@ graph TB
         UserCredentialsStore[("Per-User Encrypted Tool Credentials")]
     end
 
-    subgraph EnterpriseIntegrationLayer ["Enterprise Integration Dispatch Layer"]
+    subgraph IntegrationLayer ["Integration Dispatch Layer"]
         CredentialResolver["Per-User / System Credential Resolver"]
         JiraConnector["Atlassian Jira Cloud Connector"]
         CalendarConnector["Google Calendar API Connector"]
@@ -125,14 +125,14 @@ graph TB
     ConversationalIntelligenceLayer --> ConversationalMemory
     ConversationalIntelligenceLayer --> GlobalSearchEngine
 
-    RelationalDB --> EnterpriseIntegrationLayer
+    RelationalDB --> IntegrationLayer
     UserCredentialsStore --> CredentialResolver
-    CredentialResolver --> EnterpriseIntegrationLayer
-    EnterpriseIntegrationLayer --> JiraConnector
-    EnterpriseIntegrationLayer --> CalendarConnector
-    EnterpriseIntegrationLayer --> SlackConnector
-    EnterpriseIntegrationLayer --> EmailConnector
-    ReminderService --> EnterpriseIntegrationLayer
+    CredentialResolver --> IntegrationLayer
+    IntegrationLayer --> JiraConnector
+    IntegrationLayer --> CalendarConnector
+    IntegrationLayer --> SlackConnector
+    IntegrationLayer --> EmailConnector
+    ReminderService --> IntegrationLayer
 ```
 
 ---
@@ -230,7 +230,7 @@ The ingestion system accepts recordings in diverse audio and video formats, incl
 
 * **Live Browser Voice Recording**: Users can record meetings directly from their browser using the HTML5 MediaRecorder API (`audio/webm;codecs=opus` or `audio/mp4`). The interface features a real-time animated waveform canvas visualizer backed by the Web Audio API (`AudioContext` and `AnalyserNode`), duration timers, pause and resume controls, and in-browser playback preview before initiating the processing pipeline.
 * **Multi-Tier Resilient Upload Architecture (100 MB+)**:
-  * **Stage 1 (TUS Resumable Direct Upload)**: Leverages `tus-js-client` for browser-to-cloud streaming in 6 MB chunks, bypassing backend bottlenecks, enabling unlimited recording sizes (1 GB+), and supporting automatic pause and resume across network reconnections.
+  * **Stage 1 (TUS Resumable Direct Upload)**: Leverages `tus-js-client` for browser-to-cloud streaming in 6 MB chunks, bypassing backend bottlenecks, enabling large recording uploads (tested up to 1 GB), and supporting automatic pause and resume across network reconnections.
   * **Stage 2 (Direct Presigned S3 PUT)**: Automatically generates presigned S3/R2 upload URLs for direct client-to-bucket transfers when TUS is bypassed, offloading server bandwidth.
   * **Stage 3 (Streaming Server Proxy with Graceful Fallback)**: High-speed streaming multipart proxy with zero memory buffering. If cloud storage is temporarily unavailable, sleeping, or paused (such as Supabase free-tier HTTP 540 "Project paused"), or if a file exceeds single-object limits, the system **automatically and gracefully falls back to local disk storage**, ensuring zero failed uploads.
   * **High Throughput Performance**: Verified at sustained transfer rates exceeding **34 MB/s** (100 MB audio files uploaded in under 3 seconds).
@@ -408,7 +408,7 @@ The platform is configured via environment variables organized by functional lay
 | HF_TOKEN | HuggingFace user access token for acoustic diarization model weights | User access token | No |
 | DIARIZATION_ENABLED | Toggle enabling or bypassing speaker diarization during pipeline runs | Boolean string | No |
 
-### Enterprise Integration Settings (System Fallbacks)
+### Integration Settings (System Fallbacks)
 
 | Variable Name | Description | Default / Format | Required |
 |---|---|---|---|

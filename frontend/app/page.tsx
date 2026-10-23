@@ -900,7 +900,7 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-[1440px] px-6 sm:px-8 lg:px-12">
           <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-b from-surface to-surface-2 p-10 text-center sm:p-14 lg:p-20 space-y-7 shadow-lg">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 font-mono text-xs text-text-secondary shadow-sm">
-              <span>ENTERPRISE AGENTIC WORKSPACE</span>
+              <span>AGENTIC INTELLIGENCE WORKSPACE</span>
             </div>
 
             <h2 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
@@ -950,7 +950,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2.5">
             <span className="font-bold text-foreground">Meeting Intelligence Agent</span>
             <span>•</span>
-            <span className="font-mono">v2.0 Enterprise</span>
+            <span className="font-mono">v1-baseline</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">

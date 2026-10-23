@@ -163,7 +163,7 @@ async function uploadAudioDirectOrFallback(
   signal?: AbortSignal
 ): Promise<UploadAudioResult> {
   // ─── Stage 1: TUS resumable upload (browser → Supabase, no backend proxy) ───
-  // Supports unlimited file sizes (1 GB+ meeting recordings).
+  // Supports large file sizes (tested up to 1 GB configured maximum).
   // Automatically resumes on reconnect; uses 6 MB chunks.
   try {
     const { tusUploadToSupabase } = await import("@/lib/api/tus-upload");
