@@ -54,6 +54,7 @@ _VAGUE_DATE_PATTERNS = [
     r"\bsoon\b",
     r"\blater\b",
     r"\bsomeday\b",
+    r"\bsometime\b",
     r"\beventually\b",
     r"\bdown\s+the\s+road\b",
     r"\basap\b",

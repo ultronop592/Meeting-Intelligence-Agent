@@ -1,6 +1,6 @@
 # Meeting Intelligence Agent — Evaluation Report
-**Run ID:** `run-20261023-081518` | **Dataset:** `datasets` | **Meetings Evaluated:** 4
-**Timestamp:** 2026-10-23T08:15:18.629905+00:00
+**Run ID:** `run-20261024-172810` | **Dataset:** `datasets` | **Meetings Evaluated:** 4
+**Timestamp:** 2026-10-24T17:28:10.253858+00:00
 
 ### Component Summary Metrics
 

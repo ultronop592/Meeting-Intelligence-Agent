@@ -158,7 +158,8 @@ class AgentState(BaseModel):
     llm_model_used:  Optional[str] = None
 
     # --- Phase 2 Verification Metadata ---------------------------------------
-    verification_summary: Optional[dict] = Field(default=None, description="Summary stats from the verification node.")
+    verification_summary:     Optional[dict] = Field(default=None, description="Summary stats from the verification node.")
+    verification_retry_count: int            = Field(default=0, description="Number of feedback retry attempts.")
  
     class Config:
         arbitrary_types_allowed = True

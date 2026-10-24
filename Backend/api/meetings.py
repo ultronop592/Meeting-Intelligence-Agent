@@ -811,6 +811,19 @@ async def send_jira(
     if not action_items_rows:
         return {"message": "No action items found for this meeting.", "sent": 0, "failed": 0, "created": []}
 
+    # Policy gate: do not dispatch items that are flagged for review
+    dispatchable_rows = [i for i in action_items_rows if not getattr(i, "needs_review", False)]
+    flagged_count = len(action_items_rows) - len(dispatchable_rows)
+
+    if not dispatchable_rows:
+        return {
+            "message": f"All {len(action_items_rows)} action items are flagged for human review. Please review and resolve items before dispatching to Jira.",
+            "sent": 0,
+            "failed": 0,
+            "flagged_for_review": flagged_count,
+            "created": [],
+        }
+
     action_items = [
         ActionItemSchema(
             description=i.description,
@@ -818,7 +831,7 @@ async def send_jira(
             due_date=i.due_date,
             priority=Priority(i.priority),
         )
-        for i in action_items_rows
+        for i in dispatchable_rows
     ]
 
     try:

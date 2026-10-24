@@ -103,6 +103,14 @@ def extract_information(state: AgentState) -> dict:
     try:
         groq_client = Groq(api_key=settings.groq_api_key)
         system_prompt = _get_system_prompt()
+        if getattr(state, "verification_retry_count", 0) > 0:
+            system_prompt += (
+                "\n\nFEEDBACK FROM VERIFICATION PASS:\n"
+                "The previous extraction pass extracted items that were unsupported by verbatim transcript quotes.\n"
+                "CRITICAL: Do NOT invent tasks, guess owners, or fabricate deadlines. Extract ONLY action items "
+                "where a participant explicitly stated or agreed to a specific task, with real supporting text in the transcript."
+            )
+
         raw_json, model_used = execute_with_llm_fallback(
             lambda model: _call_extraction_llm(
                 groq_client,
@@ -120,6 +128,7 @@ def extract_information(state: AgentState) -> dict:
         return {
             "extraction": extraction,
             "llm_model_used": model_used,
+            "verification_retry_count": getattr(state, "verification_retry_count", 0),
             "completed_nodes": state.completed_nodes + ["extract_information"],
         }
     except ValidationError as e:
