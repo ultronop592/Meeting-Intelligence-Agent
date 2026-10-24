@@ -127,12 +127,21 @@ class ActionItem(Base):
         nullable=False,
         default="open",
     )
- 
+
+    # Phase 2: Evidence, Verification & Confidence fields
+    evidence_quote         = Column(Text, nullable=True)
+    evidence_timestamp     = Column(String(32), nullable=True)
+    confidence             = Column(Float, nullable=False, default=1.0)
+    needs_review           = Column(Boolean, nullable=False, default=False)
+    owner_status           = Column(String(32), nullable=False, default="stated")
+    verification_reasoning = Column(Text, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
 
     __table_args__ = (
         Index("ix_action_items_meeting_status", "meeting_id", "status"),
         Index("ix_action_items_due_date", "due_date"),
+        Index("ix_action_items_needs_review", "meeting_id", "needs_review"),
     )
 
     meeting = relationship("Meeting", back_populates="action_items")
@@ -148,6 +157,14 @@ class Decision(Base):
     meeting_id  = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
     description = Column(Text,   nullable=False)
     context     = Column(Text,   nullable=False)
+
+    # Phase 2: Evidence, Verification & Confidence fields
+    evidence_quote         = Column(Text, nullable=True)
+    evidence_timestamp     = Column(String(32), nullable=True)
+    confidence             = Column(Float, nullable=False, default=1.0)
+    needs_review           = Column(Boolean, nullable=False, default=False)
+    verification_reasoning = Column(Text, nullable=True)
+
     created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
  
     meeting = relationship("Meeting", back_populates="decisions")

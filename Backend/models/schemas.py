@@ -43,11 +43,19 @@ class EmbeddingStatus(str, Enum):
  
 class ActionItem(BaseModel):
     """A single task extracted from the meeting transcript."""
-    description: str      = Field(..., min_length=5, description="Actionable task starting with a verb.")
-    owner:       str      = Field(..., description="Full name of the responsible person.")
-    due_date:    str      = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="ISO-8601 date YYYY-MM-DD.")
-    priority:    Priority = Field(default=Priority.medium)
- 
+    description: str           = Field(..., min_length=5, description="Actionable task starting with a verb.")
+    owner:       str           = Field(..., description="Full name of the responsible person or 'Unassigned'.")
+    due_date:    Optional[str] = Field(default="unspecified", description="ISO-8601 date YYYY-MM-DD or 'unspecified'.")
+    priority:    Priority      = Field(default=Priority.medium)
+
+    # Phase 2 Verification & Grounding fields
+    evidence_quote:         Optional[str] = Field(default=None, description="Exact verbatim quote from the transcript supporting this task.")
+    evidence_timestamp:     Optional[str] = Field(default=None, description="Timestamp or time span of the evidence in the meeting.")
+    confidence:             float         = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0.")
+    needs_review:           bool          = Field(default=False, description="Flagged for human review if ambiguous or unverified.")
+    owner_status:           str           = Field(default="stated", description="Status of owner: 'stated', 'inferred', or 'unassigned'.")
+    verification_reasoning: Optional[str] = Field(default=None, description="Explanation for verification or ambiguity decision.")
+
     @field_validator("owner")
     @classmethod
     def owner_not_empty(cls, v: str) -> str:
@@ -60,6 +68,13 @@ class Decision(BaseModel):
     """A key decision reached during the meeting."""
     description: str = Field(..., min_length=5)
     context:     str = Field(..., description="Why this decision was made.")
+
+    # Phase 2 Verification & Grounding fields
+    evidence_quote:         Optional[str] = Field(default=None, description="Exact verbatim quote from the transcript supporting this decision.")
+    evidence_timestamp:     Optional[str] = Field(default=None, description="Timestamp or time span of the evidence.")
+    confidence:             float         = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score between 0.0 and 1.0.")
+    needs_review:           bool          = Field(default=False, description="Flagged for human review if ambiguous or unverified.")
+    verification_reasoning: Optional[str] = Field(default=None, description="Explanation for verification decision.")
  
  
 class ExtractionOutput(BaseModel):
@@ -141,6 +156,9 @@ class AgentState(BaseModel):
     # Tracks the last Groq model selected by LLMRouter (e.g. "llama-3.1-8b-instant").
     # Updated by extraction and summary nodes on each run.
     llm_model_used:  Optional[str] = None
+
+    # --- Phase 2 Verification Metadata ---------------------------------------
+    verification_summary: Optional[dict] = Field(default=None, description="Summary stats from the verification node.")
  
     class Config:
         arbitrary_types_allowed = True
@@ -207,24 +225,35 @@ class MeetingRow(BaseModel):
  
  
 class ActionItemRow(BaseModel):
-    id:             Optional[str]    = None
-    meeting_id:     str
-    description:    str
-    owner:          str
-    due_date:       str
-    priority:       Priority
-    jira_ticket_id: Optional[str]    = None
-    status:         ActionItemStatus = ActionItemStatus.OPEN
+    id:                     Optional[str]    = None
+    meeting_id:             str
+    description:            str
+    owner:                  str
+    due_date:               str
+    priority:               Priority
+    jira_ticket_id:         Optional[str]    = None
+    status:                 ActionItemStatus = ActionItemStatus.OPEN
+    evidence_quote:         Optional[str]    = None
+    evidence_timestamp:     Optional[str]    = None
+    confidence:             float            = 1.0
+    needs_review:           bool             = False
+    owner_status:           str              = "stated"
+    verification_reasoning: Optional[str]    = None
  
     class Config:
         from_attributes = True
  
  
 class DecisionRow(BaseModel):
-    id:          Optional[str] = None
-    meeting_id:  str
-    description: str
-    context:     str
+    id:                     Optional[str] = None
+    meeting_id:             str
+    description:            str
+    context:                str
+    evidence_quote:         Optional[str] = None
+    evidence_timestamp:     Optional[str] = None
+    confidence:             float         = 1.0
+    needs_review:           bool          = False
+    verification_reasoning: Optional[str] = None
  
     class Config:
         from_attributes = True

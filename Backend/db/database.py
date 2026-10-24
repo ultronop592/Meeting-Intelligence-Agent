@@ -199,12 +199,18 @@ async def save_to_database(state: AgentState) -> dict:
                         meeting_id=meeting_id,
                         description=item.description,
                         owner=item.owner,
-                        due_date=item.due_date,
-                        priority=item.priority.value,
+                        due_date=item.due_date or "unspecified",
+                        priority=item.priority.value if hasattr(item.priority, "value") else str(item.priority),
+                        evidence_quote=getattr(item, "evidence_quote", None),
+                        evidence_timestamp=getattr(item, "evidence_timestamp", None),
+                        confidence=float(getattr(item, "confidence", 1.0) or 1.0),
+                        needs_review=bool(getattr(item, "needs_review", False)),
+                        owner_status=str(getattr(item, "owner_status", "stated") or "stated"),
+                        verification_reasoning=getattr(item, "verification_reasoning", None),
                     )
                     session.add(db_item)
                 logger.info("Saved %d action items.", len(state.extraction.action_items))
- 
+
             # --- 3. Save Decisions -------------------------------------------
             if state.extraction and state.extraction.decisions:
                 for decision in state.extraction.decisions:
@@ -212,6 +218,11 @@ async def save_to_database(state: AgentState) -> dict:
                         meeting_id=meeting_id,
                         description=decision.description,
                         context=decision.context,
+                        evidence_quote=getattr(decision, "evidence_quote", None),
+                        evidence_timestamp=getattr(decision, "evidence_timestamp", None),
+                        confidence=float(getattr(decision, "confidence", 1.0) or 1.0),
+                        needs_review=bool(getattr(decision, "needs_review", False)),
+                        verification_reasoning=getattr(decision, "verification_reasoning", None),
                     )
                     session.add(db_decision)
                 logger.info("Saved %d decisions.", len(state.extraction.decisions))
