@@ -41,6 +41,7 @@ FastAPI calls this via run_in_executor().
 """
 
 import logging
+from typing import Any, Optional
 from slack_sdk.webhook import WebhookClient
 from slack_sdk.errors import SlackApiError
 from tenacity import (
@@ -68,6 +69,17 @@ def _run_async(coro) -> None:
         loop.create_task(coro)
     except RuntimeError:
         asyncio.run(coro)
+
+
+def _run_async_result(coro):
+    """Run an async coroutine from sync context and wait for result."""
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    except RuntimeError:
+        return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -240,13 +252,7 @@ def send_notifications(state: AgentState) -> dict:
     if getattr(state, "user_id", None):
         try:
             from db.database import get_user_tool_credentials
-            import concurrent.futures
-            try:
-                loop = asyncio.get_running_loop()
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    user_slack_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "slack")).result()
-            except RuntimeError:
-                user_slack_creds = asyncio.run(get_user_tool_credentials(state.user_id, "slack"))
+            user_slack_creds = _run_async_result(get_user_tool_credentials(state.user_id, "slack"))
         except Exception as exc:
             logger.debug("Failed to load user Slack credentials: %s", exc)
 
@@ -254,6 +260,9 @@ def send_notifications(state: AgentState) -> dict:
     if slack_creds:
         webhook_url, channel = slack_creds
         try:
+            from core.outbox import outbox_service, build_idempotency_key
+            key = build_idempotency_key(state.meeting_id or "default", "slack")
+
             blocks = _build_slack_blocks(
                 meeting_title=state.summary.title,
                 short_summary=state.summary.short_summary,
@@ -263,14 +272,34 @@ def send_notifications(state: AgentState) -> dict:
                 duration_minutes=state.summary.duration_minutes,
             )
 
-            _post_to_slack(
-                webhook_url=webhook_url,
-                text=f"Meeting Summary: {state.summary.title}",
-                blocks=blocks,
+            async def _dispatch():
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None,
+                    _post_to_slack,
+                    webhook_url,
+                    f"Meeting Summary: {state.summary.title}",
+                    blocks,
+                )
+                return channel, {"channel": channel}
+
+            res = _run_async_result(
+                outbox_service.execute_idempotent_dispatch(
+                    idempotency_key=key,
+                    meeting_id=state.meeting_id or "default",
+                    channel="slack",
+                    dispatch_fn=_dispatch,
+                    payload={"meeting_title": state.summary.title, "channel": channel},
+                    user_id=getattr(state, "user_id", None),
+                )
             )
 
-            logger.info("Slack notification sent to %s", channel)
-            notification_results.append({"type": "slack", "status": "sent"})
+            logger.info("Slack notification processed (duplicate=%s) for %s", res.get("is_duplicate"), channel)
+            notification_results.append({
+                "type": "slack",
+                "status": "sent",
+                "is_duplicate": res.get("is_duplicate", False),
+            })
 
             if state.meeting_id:
                 _run_async(log_notification(
@@ -305,12 +334,13 @@ def send_notifications(state: AgentState) -> dict:
             user_id=getattr(state, "user_id", None),
         )
 
-        if email_result.get("sent", 0) > 0 or email_result.get("failed", 0) > 0:
+        if email_result.get("sent", 0) > 0 or email_result.get("failed", 0) > 0 or email_result.get("skipped", 0) > 0:
             notification_results.append({
                 "type":   "email",
-                "status": "sent" if email_result.get("sent", 0) > 0 else "failed",
-                "sent":   email_result["sent"],
-                "failed": email_result["failed"],
+                "status": "sent" if (email_result.get("sent", 0) > 0 or email_result.get("skipped", 0) > 0) else "failed",
+                "sent":   email_result.get("sent", 0),
+                "failed": email_result.get("failed", 0),
+                "skipped": email_result.get("skipped", 0),
             })
 
     except Exception as e:
@@ -344,6 +374,7 @@ async def send_slack_for_meeting(
     duration_minutes: int,
     credentials:      dict | None = None,
     user_id:          str | None = None,
+    session:          Any | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/slack
@@ -362,6 +393,9 @@ async def send_slack_for_meeting(
 
     webhook_url, channel = slack_creds
 
+    from core.outbox import outbox_service, build_idempotency_key
+    key = build_idempotency_key(meeting_id, "slack")
+
     try:
         blocks = _build_slack_blocks(
             meeting_title=meeting_title,
@@ -372,10 +406,25 @@ async def send_slack_for_meeting(
             duration_minutes=duration_minutes,
         )
 
-        _post_to_slack(
-            webhook_url=webhook_url,
-            text=f"Meeting Summary: {meeting_title}",
-            blocks=blocks,
+        async def _dispatch_slack():
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                _post_to_slack,
+                webhook_url,
+                f"Meeting Summary: {meeting_title}",
+                blocks,
+            )
+            return channel or "slack_channel", {"channel": channel}
+
+        res = await outbox_service.execute_idempotent_dispatch(
+            idempotency_key=key,
+            meeting_id=meeting_id,
+            channel="slack",
+            dispatch_fn=_dispatch_slack,
+            payload={"meeting_title": meeting_title, "channel": channel},
+            user_id=user_id,
+            session=session,
         )
 
         await log_notification(
@@ -385,7 +434,12 @@ async def send_slack_for_meeting(
             detail=channel,
         )
 
-        return {"success": True, "error": None}
+        return {
+            "success": True,
+            "error": None,
+            "is_duplicate": res.get("is_duplicate", False),
+            "detail": res.get("detail"),
+        }
 
     except Exception as e:
         await log_notification(
@@ -394,4 +448,4 @@ async def send_slack_for_meeting(
             status="failed",
             detail=str(e)[:200],
         )
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": str(e), "is_duplicate": False}

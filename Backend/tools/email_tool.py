@@ -44,7 +44,7 @@ Called from FastAPI via asyncio.run_in_executor().
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, To, Content
 from tenacity import (
@@ -71,6 +71,17 @@ def _run_async(coro) -> None:
         loop.create_task(coro)
     except RuntimeError:
         asyncio.run(coro)
+
+
+def _run_async_result(coro):
+    """Run an async coroutine from sync context and wait for result."""
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    except RuntimeError:
+        return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -318,20 +329,14 @@ def send_emails(
     if not resolved_user_creds and target_user_id:
         try:
             from db.database import get_user_tool_credentials
-            import concurrent.futures
-            try:
-                loop = asyncio.get_running_loop()
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    resolved_user_creds = pool.submit(asyncio.run, get_user_tool_credentials(target_user_id, "email")).result()
-            except RuntimeError:
-                resolved_user_creds = asyncio.run(get_user_tool_credentials(target_user_id, "email"))
+            resolved_user_creds = _run_async_result(get_user_tool_credentials(target_user_id, "email"))
         except Exception as exc:
             logger.debug("Failed to load user email credentials: %s", exc)
 
     creds = resolve_email_credentials(resolved_user_creds)
     if not creds:
         logger.info("SendGrid credentials not configured — skipping emails.")
-        return {"sent": 0, "failed": 0}
+        return {"sent": 0, "failed": 0, "skipped": 0}
 
     api_key, sender_email, sender_name = creds
 
@@ -339,6 +344,9 @@ def send_emails(
     subject          = _build_email_subject(state.summary.title)
     sent_count       = 0
     failed_count     = 0
+    skipped_count    = 0
+
+    from core.outbox import outbox_service, build_idempotency_key
 
     for name, email in participant_emails.items():
         if not email:
@@ -363,20 +371,42 @@ def send_emails(
             my_action_items=my_items,
         )
 
+        key = build_idempotency_key(state.meeting_id or "default", "email", recipient=email)
+
+        async def _dispatch_single():
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                _send_single_email,
+                email,
+                name,
+                subject,
+                html_body,
+                plain_body,
+                api_key,
+                sender_email,
+                sender_name,
+            )
+            return f"email_{email}", {"recipient": email, "name": name}
+
         try:
-            _send_single_email(
-                to_email=email,
-                to_name=name,
-                subject=subject,
-                html_body=html_body,
-                plain_body=plain_body,
-                api_key=api_key,
-                sender_email=sender_email,
-                sender_name=sender_name,
+            res = _run_async_result(
+                outbox_service.execute_idempotent_dispatch(
+                    idempotency_key=key,
+                    meeting_id=state.meeting_id or "default",
+                    channel="email",
+                    dispatch_fn=_dispatch_single,
+                    payload={"recipient": email, "name": name, "items_count": len(my_items)},
+                    user_id=target_user_id,
+                )
             )
 
-            sent_count += 1
-            logger.info("Email sent | to: %s <%s> | items: %d", name, email, len(my_items))
+            if res.get("is_duplicate"):
+                skipped_count += 1
+                logger.info("Email skipped (idempotent duplicate) | to: %s <%s>", name, email)
+            else:
+                sent_count += 1
+                logger.info("Email sent | to: %s <%s> | items: %d", name, email, len(my_items))
 
             if state.meeting_id:
                 _run_async(log_notification(
@@ -399,8 +429,8 @@ def send_emails(
                     detail=error_msg[:200],
                 ))
 
-    logger.info("Email complete | sent: %d | failed: %d", sent_count, failed_count)
-    return {"sent": sent_count, "failed": failed_count}
+    logger.info("Email complete | sent: %d | skipped: %d | failed: %d", sent_count, skipped_count, failed_count)
+    return {"sent": sent_count, "failed": failed_count, "skipped": skipped_count}
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +445,7 @@ async def send_email_for_meeting(
     participant_emails: dict[str, str],
     credentials:        dict | None = None,
     user_id:            str | None = None,
+    session:            Any | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/email
@@ -430,28 +461,53 @@ async def send_email_for_meeting(
         raise ValueError("SendGrid email not configured. Please connect SendGrid in Integrations & Tools.")
 
     api_key, sender_email, sender_name = creds
-    sent, failed = 0, 0
+    sent, failed, skipped = 0, 0, 0
+
+    from core.outbox import outbox_service, build_idempotency_key
 
     for name, email in participant_emails.items():
+        if not email:
+            continue
         my_items   = [i for i in all_action_items if i.owner.lower() == name.lower()]
         html_body  = _build_email_html(name, meeting_title, short_summary, my_items, all_action_items)
         plain_body = _build_email_text(name, meeting_title, short_summary, my_items)
+        subject    = _build_email_subject(meeting_title)
+
+        key = build_idempotency_key(meeting_id, "email", recipient=email)
+
+        async def _dispatch_single_email(n=name, e=email, h=html_body, p=plain_body, s=subject):
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                _send_single_email,
+                e,
+                n,
+                s,
+                h,
+                p,
+                api_key,
+                sender_email,
+                sender_name,
+            )
+            return f"email_{e}", {"recipient": e, "name": n}
 
         try:
-            _send_single_email(
-                to_email=email,
-                to_name=name,
-                subject=_build_email_subject(meeting_title),
-                html_body=html_body,
-                plain_body=plain_body,
-                api_key=api_key,
-                sender_email=sender_email,
-                sender_name=sender_name,
+            res = await outbox_service.execute_idempotent_dispatch(
+                idempotency_key=key,
+                meeting_id=meeting_id,
+                channel="email",
+                dispatch_fn=_dispatch_single_email,
+                payload={"recipient": email, "name": name, "items_count": len(my_items)},
+                user_id=user_id,
+                session=session,
             )
-            sent += 1
+            if res.get("is_duplicate"):
+                skipped += 1
+            else:
+                sent += 1
             await log_notification(meeting_id, "email", "sent", f"{name} <{email}>")
         except Exception as e:
             failed += 1
             await log_notification(meeting_id, "email", "failed", str(e)[:200])
 
-    return {"sent": sent, "failed": failed}
+    return {"sent": sent, "failed": failed, "skipped": skipped}

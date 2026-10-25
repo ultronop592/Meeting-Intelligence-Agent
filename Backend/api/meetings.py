@@ -839,13 +839,21 @@ async def send_jira(
             meeting_id=meeting_id,
             action_items=action_items,
             user_id=current_user.id,
+            session=db,
         )
+        for idx, row in enumerate(dispatchable_rows):
+            if idx < len(result.get("created", [])):
+                row.jira_ticket_id = result["created"][idx]
+            elif idx < len(result.get("skipped", [])):
+                row.jira_ticket_id = result["skipped"][idx]
+        await db.commit()
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
 
     return {
-        "message": f"Jira dispatch complete — created: {len(result['created'])}, failed: {len(result['failed'])}",
+        "message": f"Jira dispatch complete — created: {len(result['created'])}, skipped: {len(result.get('skipped', []))}, failed: {len(result['failed'])}",
         "sent": len(result["created"]),
+        "skipped": len(result.get("skipped", [])),
         "failed": len(result["failed"]),
         "created": result["created"],
     }
@@ -878,6 +886,7 @@ async def send_calendar(
         emails=participant_emails,
         days_from_now=days_from_now,
         user_id=current_user.id,
+        session=db,
     )
 
     if result.get("error"):
@@ -943,9 +952,11 @@ async def dispatch_meeting(
                 decisions_count=int(decisions_count or 0),
                 duration_minutes=meeting.duration_minutes,
                 user_id=current_user.id,
+                session=db,
             )
             results["slack"] = {
                 "status": "sent" if slack_res["success"] else "failed",
+                "is_duplicate": slack_res.get("is_duplicate", False),
                 "message": "Slack notification sent successfully." if slack_res["success"] else slack_res.get("error", "Slack dispatch failed"),
             }
         except Exception as exc:
@@ -962,9 +973,11 @@ async def dispatch_meeting(
                 results["jira"] = {
                     "status": "skipped",
                     "created_count": 0,
+                    "skipped_count": 0,
                     "failed_count": 0,
                     "message": "No action items found for Jira ticket creation.",
                     "created": [],
+                    "skipped": [],
                 }
             else:
                 action_items = [
@@ -980,13 +993,25 @@ async def dispatch_meeting(
                     meeting_id=meeting_id,
                     action_items=action_items,
                     user_id=current_user.id,
+                    session=db,
                 )
+                created_keys = jira_res.get("created", [])
+                skipped_keys = jira_res.get("skipped", [])
+                for idx, row in enumerate(action_items_rows):
+                    if idx < len(created_keys):
+                        row.jira_ticket_id = created_keys[idx]
+                    elif idx < len(skipped_keys):
+                        row.jira_ticket_id = skipped_keys[idx]
+                await db.commit()
+
                 results["jira"] = {
-                    "status": "sent" if jira_res["created"] else ("failed" if jira_res["failed"] else "skipped"),
-                    "created_count": len(jira_res.get("created", [])),
+                    "status": "sent" if (created_keys or skipped_keys) else ("failed" if jira_res["failed"] else "skipped"),
+                    "created_count": len(created_keys),
+                    "skipped_count": len(skipped_keys),
                     "failed_count": len(jira_res.get("failed", [])),
-                    "message": f"Created {len(jira_res.get('created', []))} Jira tickets.",
-                    "created": jira_res.get("created", []),
+                    "message": f"Jira dispatch complete: {len(created_keys)} created, {len(skipped_keys)} skipped (idempotent duplicate).",
+                    "created": created_keys,
+                    "skipped": skipped_keys,
                 }
         except Exception as exc:
             results["jira"] = {"status": "failed", "message": str(exc)}
@@ -1004,9 +1029,11 @@ async def dispatch_meeting(
                 emails=[p.email for p in participants if p.email],
                 days_from_now=payload.days_from_now,
                 user_id=current_user.id,
+                session=db,
             )
             results["calendar"] = {
                 "status": "sent" if not cal_res.get("error") else "failed",
+                "is_duplicate": cal_res.get("is_duplicate", False),
                 "event_id": cal_res.get("event_id"),
                 "event_url": cal_res.get("event_url"),
                 "message": f"Calendar follow-up booked for {payload.days_from_now} day(s) from now." if not cal_res.get("error") else cal_res.get("error"),
@@ -1028,6 +1055,7 @@ async def dispatch_meeting(
                 results["email"] = {
                     "status": "skipped",
                     "sent_count": 0,
+                    "skipped_count": 0,
                     "failed_count": 0,
                     "message": "No participant email addresses configured.",
                 }
@@ -1048,12 +1076,17 @@ async def dispatch_meeting(
                     all_action_items=action_items,
                     participant_emails=participant_emails,
                     user_id=current_user.id,
+                    session=db,
                 )
+                sent_cnt = email_res.get("sent", 0)
+                skip_cnt = email_res.get("skipped", 0)
+                fail_cnt = email_res.get("failed", 0)
                 results["email"] = {
-                    "status": "sent" if email_res["sent"] > 0 else "failed",
-                    "sent_count": email_res["sent"],
-                    "failed_count": email_res["failed"],
-                    "message": f"Email dispatch complete — sent: {email_res['sent']}, failed: {email_res['failed']}",
+                    "status": "sent" if (sent_cnt > 0 or skip_cnt > 0) else "failed",
+                    "sent_count": sent_cnt,
+                    "skipped_count": skip_cnt,
+                    "failed_count": fail_cnt,
+                    "message": f"Email dispatch complete — sent: {sent_cnt}, skipped: {skip_cnt}, failed: {fail_cnt}",
                 }
         except Exception as exc:
             results["email"] = {"status": "failed", "message": str(exc)}

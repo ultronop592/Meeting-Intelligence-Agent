@@ -40,7 +40,7 @@ FastAPI calls this via asyncio.run_in_executor().
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -69,6 +69,38 @@ def _run_async(coro) -> None:
         loop.create_task(coro)
     except RuntimeError:
         asyncio.run(coro)
+
+
+def _run_async_result(coro):
+    """Run an async coroutine from sync context and wait for result."""
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+def _find_calendar_event_by_key(service, calendar_id: str, title: str, follow_up_date: datetime) -> str | None:
+    """Check if a follow-up calendar event already exists on Google Calendar."""
+    try:
+        time_min = (follow_up_date - timedelta(days=2)).isoformat()
+        time_max = (follow_up_date + timedelta(days=2)).isoformat()
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            q=f"Follow-up: {title}",
+            maxResults=1,
+            singleEvents=True,
+        ).execute()
+        items = events_result.get("items", [])
+        if items:
+            return items[0].get("id")
+    except Exception as exc:
+        logger.debug("Google Calendar remote check failed: %s", exc)
+    return None
 
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
@@ -239,13 +271,7 @@ def book_calendar(state: AgentState) -> dict:
     if getattr(state, "user_id", None):
         try:
             from db.database import get_user_tool_credentials
-            import concurrent.futures
-            try:
-                loop = asyncio.get_running_loop()
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    user_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "calendar")).result()
-            except RuntimeError:
-                user_creds = asyncio.run(get_user_tool_credentials(state.user_id, "calendar"))
+            user_creds = _run_async_result(get_user_tool_credentials(state.user_id, "calendar"))
         except Exception as exc:
             logger.debug("Failed to load user Calendar credentials: %s", exc)
 
@@ -280,17 +306,49 @@ def book_calendar(state: AgentState) -> dict:
             follow_up_date=follow_up_date,
         )
 
-        event = _create_calendar_event(
-            service,
-            calendar_id,
-            event_payload,
+        from core.outbox import outbox_service, build_idempotency_key
+        key = build_idempotency_key(state.meeting_id or "default", "calendar")
+
+        async def _dispatch_cal():
+            loop = asyncio.get_running_loop()
+            ev = await loop.run_in_executor(
+                None,
+                _create_calendar_event,
+                service,
+                calendar_id,
+                event_payload,
+            )
+            return ev.get("id", ""), {"event_url": ev.get("htmlLink", "")}
+
+        async def _check_remote_cal():
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                _find_calendar_event_by_key,
+                service,
+                calendar_id,
+                state.summary.title,
+                follow_up_date,
+            )
+
+        res = _run_async_result(
+            outbox_service.execute_idempotent_dispatch(
+                idempotency_key=key,
+                meeting_id=state.meeting_id or "default",
+                channel="calendar",
+                dispatch_fn=_dispatch_cal,
+                check_remote_fn=_check_remote_cal,
+                payload={"meeting_title": state.summary.title},
+                user_id=getattr(state, "user_id", None),
+            )
         )
 
-        event_id  = event.get("id", "")
-        event_url = event.get("htmlLink", "")
+        event_id = res.get("external_id") or ""
+        event_url = (res.get("detail") or {}).get("event_url", "")
 
         logger.info(
-            "Calendar event created | id: %s | url: %s",
+            "Calendar event processed (duplicate=%s) | id: %s | url: %s",
+            res.get("is_duplicate"),
             event_id,
             event_url,
         )
@@ -300,7 +358,7 @@ def book_calendar(state: AgentState) -> dict:
                 meeting_id=state.meeting_id,
                 notification_type="calendar",
                 status="sent",
-                detail=event_url,
+                detail=event_url or event_id or "calendar_event",
             ))
 
         return {
@@ -359,6 +417,7 @@ async def send_calendar_for_meeting(
     days_from_now: int = 7,
     credentials:   dict | None = None,
     user_id:       str | None = None,
+    session:       Any | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/calendar
@@ -397,23 +456,58 @@ async def send_calendar_for_meeting(
             follow_up_date=follow_up_date,
         )
 
-        event = _create_calendar_event(
-            service,
-            calendar_id,
-            event_payload,
+        from core.outbox import outbox_service, build_idempotency_key
+        key = build_idempotency_key(meeting_id, "calendar")
+
+        async def _dispatch_cal():
+            loop = asyncio.get_running_loop()
+            ev = await loop.run_in_executor(
+                None,
+                _create_calendar_event,
+                service,
+                calendar_id,
+                event_payload,
+            )
+            return ev.get("id", ""), {"event_url": ev.get("htmlLink", "")}
+
+        async def _check_remote_cal():
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                _find_calendar_event_by_key,
+                service,
+                calendar_id,
+                meeting_title,
+                follow_up_date,
+            )
+
+        res = await outbox_service.execute_idempotent_dispatch(
+            idempotency_key=key,
+            meeting_id=meeting_id,
+            channel="calendar",
+            dispatch_fn=_dispatch_cal,
+            check_remote_fn=_check_remote_cal,
+            payload={"meeting_title": meeting_title, "days_from_now": days_from_now},
+            user_id=user_id,
+            session=session,
         )
 
-        event_id  = event.get("id", "")
-        event_url = event.get("htmlLink", "")
+        event_id  = res.get("external_id") or ""
+        event_url = (res.get("detail") or {}).get("event_url", "")
 
         await log_notification(
             meeting_id=meeting_id,
             notification_type="calendar",
             status="sent",
-            detail=event_url,
+            detail=event_url or event_id or "calendar_event",
         )
 
-        return {"event_id": event_id, "event_url": event_url, "error": None}
+        return {
+            "event_id": event_id,
+            "event_url": event_url,
+            "error": None,
+            "is_duplicate": res.get("is_duplicate", False),
+        }
 
     except Exception as e:
         await log_notification(
@@ -422,4 +516,4 @@ async def send_calendar_for_meeting(
             status="failed",
             detail=str(e)[:200],
         )
-        return {"event_id": None, "event_url": None, "error": str(e)}
+        return {"event_id": None, "event_url": None, "error": str(e), "is_duplicate": False}

@@ -36,7 +36,7 @@ block the async event loop.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from atlassian import Jira
 from tenacity import (
@@ -71,6 +71,17 @@ def _run_async(coro) -> None:
         # No running loop — safe to call asyncio.run().
         asyncio.run(coro)
 
+def _run_async_result(coro):
+    """Run an async coroutine from sync context and wait for result."""
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
 # ---------------------------------------------------------------------------
 # Priority mapping — our values → Jira priority names
 # ---------------------------------------------------------------------------
@@ -87,26 +98,15 @@ PRIORITY_MAP: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 def _build_ticket_payload(
-    item:        ActionItem,
-    project_key: str,
+    item:              ActionItem,
+    project_key:       str,
+    idempotency_label: str | None = None,
 ) -> dict:
     """
     Builds the Jira issue creation payload for one action item.
 
     Uses Atlassian Document Format (ADF) for the description.
     ADF is required by Jira REST API v3 — plain strings are rejected.
-
-    ADF structure for a simple paragraph:
-    {
-        "type": "doc",
-        "version": 1,
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": "your text here"}]
-            }
-        ]
-    }
     """
     description_adf = {
         "type": "doc",
@@ -130,15 +130,30 @@ def _build_ticket_payload(
         ],
     }
 
-    return {
+    ticket_data = {
         "project":     {"key": project_key},
         "summary":     item.description,
         "description": description_adf,
         "issuetype":   {"name": "Task"},
         "priority":    {"name": PRIORITY_MAP.get(item.priority.value, "Medium")},
-        # Due date format: YYYY-MM-DD (matches our stored format)
         "duedate":     item.due_date,
     }
+    if idempotency_label:
+        ticket_data["labels"] = [idempotency_label]
+    return ticket_data
+
+
+def _find_jira_issue_by_label(jira_client: Jira, project_key: str, label: str) -> str | None:
+    """Search Jira to check if a ticket with this idempotency label was already created."""
+    try:
+        jql = f'project = "{project_key}" AND labels = "{label}"'
+        res = jira_client.jql(jql, limit=1)
+        issues = res.get("issues", [])
+        if issues:
+            return issues[0].get("key")
+    except Exception as exc:
+        logger.debug("Jira label query failed or unsupported: %s", exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -206,13 +221,7 @@ def create_jira_tickets(state: AgentState) -> dict:
     if getattr(state, "user_id", None):
         try:
             from db.database import get_user_tool_credentials
-            import concurrent.futures
-            try:
-                loop = asyncio.get_running_loop()
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    user_creds = pool.submit(asyncio.run, get_user_tool_credentials(state.user_id, "jira")).result()
-            except RuntimeError:
-                user_creds = asyncio.run(get_user_tool_credentials(state.user_id, "jira"))
+            user_creds = _run_async_result(get_user_tool_credentials(state.user_id, "jira"))
         except Exception as exc:
             logger.debug("Failed to load user Jira credentials: %s", exc)
 
@@ -238,20 +247,53 @@ def create_jira_tickets(state: AgentState) -> dict:
     ticket_ids: list[str] = []
     errors:     list[str] = list(state.errors)
 
-    # --- Create one ticket per action item -----------------------------------
+    from core.outbox import outbox_service, build_idempotency_key
+
+    # --- Create one ticket per action item idempotently ---------------------
     for i, item in enumerate(state.extraction.action_items):
         try:
-            payload    = _build_ticket_payload(item, jira_project_key)
-            ticket_key = _create_single_ticket(jira_client, payload)
+            item_id = getattr(item, "id", None) or f"{i}_{abs(hash(item.description)) % 10000}"
+            key = build_idempotency_key(state.meeting_id or "default", "jira", item_id=item_id)
+            label = f"idemp_{abs(hash(key)) % 10000000}"
+            payload = _build_ticket_payload(item, jira_project_key, idempotency_label=label)
 
+            async def _dispatch_single():
+                loop = asyncio.get_running_loop()
+                t_key = await loop.run_in_executor(None, _create_single_ticket, jira_client, payload)
+                return t_key, {"summary": item.description}
+
+            async def _check_remote():
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, _find_jira_issue_by_label, jira_client, jira_project_key, label)
+
+            res = _run_async_result(
+                outbox_service.execute_idempotent_dispatch(
+                    idempotency_key=key,
+                    meeting_id=state.meeting_id or "default",
+                    channel="jira",
+                    dispatch_fn=_dispatch_single,
+                    check_remote_fn=_check_remote,
+                    payload={"summary": item.description, "owner": item.owner},
+                    user_id=getattr(state, "user_id", None),
+                )
+            )
+
+            ticket_key = res.get("external_id")
             if ticket_key:
                 ticket_ids.append(ticket_key)
-                logger.info(
-                    "Jira ticket created: %s | owner: %s | task: %s",
-                    ticket_key,
-                    item.owner,
-                    item.description[:50],
-                )
+                if not res.get("is_duplicate"):
+                    logger.info(
+                        "Jira ticket created: %s | owner: %s | task: %s",
+                        ticket_key,
+                        item.owner,
+                        item.description[:50],
+                    )
+                else:
+                    logger.info(
+                        "Jira ticket skipped (idempotent duplicate): %s | task: %s",
+                        ticket_key,
+                        item.description[:50],
+                    )
 
                 if state.meeting_id:
                     _run_async(log_notification(
@@ -296,6 +338,7 @@ async def send_jira_for_meeting(
     action_items: list[ActionItem],
     credentials:  dict | None = None,
     user_id:      str | None = None,
+    session:      Any | None = None,
 ) -> dict:
     """
     Called by FastAPI POST /api/meetings/{id}/send/jira
@@ -321,16 +364,44 @@ async def send_jira_for_meeting(
         cloud=True,
     )
 
+    from core.outbox import outbox_service, build_idempotency_key
+
     created: list[str] = []
     failed:  list[str] = []
+    skipped: list[str] = []
 
-    for item in action_items:
+    for idx, item in enumerate(action_items):
+        item_id = getattr(item, "id", None) or f"{idx}_{abs(hash(item.description)) % 10000}"
+        key = build_idempotency_key(meeting_id, "jira", item_id=item_id)
+        label = f"idemp_{abs(hash(key)) % 10000000}"
+        payload = _build_ticket_payload(item, jira_project_key, idempotency_label=label)
+
+        async def _dispatch_single(payload_ref=payload, item_ref=item):
+            loop = asyncio.get_running_loop()
+            t_key = await loop.run_in_executor(None, _create_single_ticket, jira_client, payload_ref)
+            return t_key, {"summary": item_ref.description}
+
+        async def _check_remote(label_ref=label):
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, _find_jira_issue_by_label, jira_client, jira_project_key, label_ref)
+
         try:
-            payload    = _build_ticket_payload(item, jira_project_key)
-            ticket_key = _create_single_ticket(jira_client, payload)
-
+            res = await outbox_service.execute_idempotent_dispatch(
+                idempotency_key=key,
+                meeting_id=meeting_id,
+                channel="jira",
+                dispatch_fn=_dispatch_single,
+                check_remote_fn=_check_remote,
+                payload={"summary": item.description, "owner": item.owner},
+                user_id=user_id,
+                session=session,
+            )
+            ticket_key = res.get("external_id")
             if ticket_key:
-                created.append(ticket_key)
+                if res.get("is_duplicate"):
+                    skipped.append(ticket_key)
+                else:
+                    created.append(ticket_key)
                 await log_notification(
                     meeting_id=meeting_id,
                     notification_type="jira",
@@ -346,4 +417,4 @@ async def send_jira_for_meeting(
                 detail=str(e)[:200],
             )
 
-    return {"created": created, "failed": failed}
+    return {"created": created, "failed": failed, "skipped": skipped}
