@@ -101,6 +101,7 @@ class Meeting(Base):
     participants      = relationship("Participant",      back_populates="meeting", cascade="all, delete-orphan")
     notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
     chat_sessions     = relationship("ChatSession",     back_populates="meeting", cascade="all, delete-orphan")
+    outbox_dispatches = relationship("OutboxDispatch", back_populates="meeting", cascade="all, delete-orphan")
 
 
 # TABLE 2 — action_items
@@ -255,6 +256,12 @@ class ProcessingJob(Base):
     notifications_sent  = Column(Integer, nullable=True)
     duration_ms         = Column(Integer, nullable=True)
 
+    # Phase 3 Durable Runtime fields
+    checkpoint_state = Column(JSON, nullable=True)
+    last_heartbeat   = Column(DateTime(timezone=True), nullable=True)
+    worker_id        = Column(String(128), nullable=True)
+    retry_count      = Column(Integer, nullable=False, default=0)
+
     started_at   = Column(DateTime(timezone=True), default=_now, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -301,3 +308,39 @@ class UserToolCredential(Base):
     updated_at  = Column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
 
     user        = relationship("User", back_populates="tool_credentials")
+
+
+# TABLE 9 — outbox_dispatches
+
+
+class OutboxDispatch(Base):
+    """Guarantees effectively exactly-once delivery to external channels
+    (Jira, Slack, Email, Calendar) via idempotency keys and transactional outbox.
+    """
+
+    __tablename__ = "outbox_dispatches"
+    __table_args__ = (
+        Index("ix_outbox_dispatches_meeting_status", "meeting_id", "status"),
+    )
+
+    id              = Column(String, primary_key=True, default=_uuid)
+    idempotency_key = Column(String(255), unique=True, nullable=False, index=True)
+    meeting_id      = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id         = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    channel         = Column(String(32), nullable=False, index=True)  # "jira", "slack", "email", "calendar"
+    status          = Column(
+        SAEnum("pending", "sent", "failed", name="outboxstatus"),
+        nullable=False,
+        default="pending",
+        index=True,
+    )
+    payload         = Column(JSON, nullable=True)
+    external_id     = Column(String(255), nullable=True)
+    retry_count     = Column(Integer, nullable=False, default=0)
+    last_error      = Column(Text, nullable=True)
+
+    created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at      = Column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+    meeting = relationship("Meeting", back_populates="outbox_dispatches")
+    user    = relationship("User")

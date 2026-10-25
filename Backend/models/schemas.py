@@ -35,6 +35,19 @@ class EmbeddingStatus(str, Enum):
     PENDING   = "pending"
     COMPLETED = "completed"
     FAILED    = "failed"
+
+
+class OutboxChannel(str, Enum):
+    JIRA     = "jira"
+    SLACK    = "slack"
+    EMAIL    = "email"
+    CALENDAR = "calendar"
+
+
+class OutboxStatus(str, Enum):
+    PENDING = "pending"
+    SENT    = "sent"
+    FAILED  = "failed"
  
  
 # =============================================================================
@@ -160,7 +173,11 @@ class AgentState(BaseModel):
     # --- Phase 2 Verification Metadata ---------------------------------------
     verification_summary:     Optional[dict] = Field(default=None, description="Summary stats from the verification node.")
     verification_retry_count: int            = Field(default=0, description="Number of feedback retry attempts.")
- 
+
+    # --- Phase 3 Durable Runtime Checkpoints ---------------------------------
+    checkpoint_state:         Optional[dict[str, Any]] = Field(default=None, description="Persisted intermediate state for recovery.")
+    resumed_from_checkpoint:  bool                     = Field(default=False, description="Flag indicating pipeline resumed from saved checkpoint.")
+
     class Config:
         arbitrary_types_allowed = True
  
@@ -278,6 +295,24 @@ class NotificationLogRow(BaseModel):
     detail:     Optional[str]      = None
     created_at: Optional[datetime] = None
  
+    class Config:
+        from_attributes = True
+
+
+class OutboxDispatchRow(BaseModel):
+    id:              Optional[str]             = None
+    idempotency_key: str
+    meeting_id:      str
+    user_id:         Optional[str]             = None
+    channel:         str
+    status:          OutboxStatus              = OutboxStatus.PENDING
+    payload:         Optional[dict[str, Any]]  = None
+    external_id:     Optional[str]             = None
+    retry_count:     int                       = 0
+    last_error:      Optional[str]             = None
+    created_at:      Optional[datetime]        = None
+    updated_at:      Optional[datetime]        = None
+
     class Config:
         from_attributes = True
  

@@ -2,9 +2,9 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import(
     AsyncSession,
     async_sessionmaker,
@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import(
 )
 
 from core.config import settings
-from db.models import(
-    Base, Meeting, ActionItem, Decision, Participant, NotificationLog, ProcessingJob, ChatSession, UserToolCredential
+from db.models import (
+    Base, Meeting, ActionItem, Decision, Participant, NotificationLog,
+    ProcessingJob, ChatSession, UserToolCredential, OutboxDispatch
 )
 from models.schemas import AgentState, EmbeddingStatus
 
@@ -374,6 +375,10 @@ async def get_processing_job(job_id: str) -> dict | None:
                 "jira_tickets_created":job.jira_tickets_created,
                 "calendar_event_id":   job.calendar_event_id,
                 "notifications_sent":  job.notifications_sent,
+                "checkpoint_state":    job.checkpoint_state or {},
+                "last_heartbeat":      job.last_heartbeat.isoformat() if job.last_heartbeat else None,
+                "worker_id":           job.worker_id,
+                "retry_count":         job.retry_count or 0,
             }
         except Exception as e:
             logger.error("Failed to get processing job %s: %s", job_id, e)
@@ -421,10 +426,8 @@ async def recover_stale_jobs() -> int:
 
 
 # =============================================================================
-# CHAT SESSIONS — Multi-Turn Conversational Memory Persistence
+# Context Session Helper
 # =============================================================================
-
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def _get_context_session(db: AsyncSession | None = None):
@@ -433,6 +436,158 @@ async def _get_context_session(db: AsyncSession | None = None):
     else:
         async with AsyncSessionLocal() as session:
             yield session
+
+
+# =============================================================================
+# PHASE 3 — Checkpointing & Outbox Helpers
+# =============================================================================
+
+async def save_job_checkpoint(
+    job_id: str,
+    node_name: str,
+    node_data: dict[str, Any],
+    completed_nodes: list[str] | None = None,
+    session: AsyncSession | None = None,
+) -> None:
+    """Persist intermediate node output state so pipeline crashes can resume
+    without repeating costly upstream nodes (transcription, diarization, etc.).
+    """
+    from datetime import datetime, timezone
+    async with _get_context_session(session) as s:
+        try:
+            job = await s.get(ProcessingJob, job_id)
+            if not job:
+                return
+            state = dict(job.checkpoint_state or {})
+            state.update(node_data)
+            job.checkpoint_state = state
+
+            nodes = list(job.completed_nodes or [])
+            if node_name not in nodes:
+                nodes.append(node_name)
+            if completed_nodes:
+                for n in completed_nodes:
+                    if n not in nodes:
+                        nodes.append(n)
+            job.completed_nodes = nodes
+            job.last_heartbeat = datetime.now(timezone.utc)
+            await s.commit()
+        except Exception as exc:
+            logger.error("Failed to save checkpoint for job %s (node=%s): %s", job_id, node_name, exc)
+            await s.rollback()
+
+
+async def get_job_checkpoint(job_id: str, session: AsyncSession | None = None) -> dict[str, Any] | None:
+    """Retrieve saved intermediate node output dictionary for job resumption."""
+    async with _get_context_session(session) as s:
+        try:
+            job = await s.get(ProcessingJob, job_id)
+            if not job:
+                return None
+            return {
+                "checkpoint_state": job.checkpoint_state or {},
+                "completed_nodes": job.completed_nodes or [],
+                "status": job.status,
+                "retry_count": job.retry_count or 0,
+            }
+        except Exception as exc:
+            logger.error("Failed to get checkpoint for job %s: %s", job_id, exc)
+            return None
+
+
+async def update_job_heartbeat(job_id: str, worker_id: str | None = None, session: AsyncSession | None = None) -> None:
+    """Touch job heartbeat timestamp so stuck-job monitor knows worker is alive."""
+    from datetime import datetime, timezone
+    async with _get_context_session(session) as s:
+        try:
+            job = await s.get(ProcessingJob, job_id)
+            if job:
+                job.last_heartbeat = datetime.now(timezone.utc)
+                if worker_id:
+                    job.worker_id = worker_id
+                await s.commit()
+        except Exception as exc:
+            logger.debug("Failed to update heartbeat for job %s: %s", job_id, exc)
+            await s.rollback()
+
+
+async def create_or_get_outbox_dispatch(
+    idempotency_key: str,
+    meeting_id: str,
+    channel: str,
+    payload: dict[str, Any] | None = None,
+    user_id: str | None = None,
+    session: AsyncSession | None = None,
+) -> tuple[OutboxDispatch, bool]:
+    """Atomically retrieve or insert an OutboxDispatch record.
+
+    Returns:
+        (dispatch, created): created is True if inserted fresh, False if existing.
+    """
+    async with _get_context_session(session) as s:
+        stmt = select(OutboxDispatch).where(OutboxDispatch.idempotency_key == idempotency_key)
+        res = await s.execute(stmt)
+        existing = res.scalar_one_or_none()
+        if existing:
+            return existing, False
+
+        new_disp = OutboxDispatch(
+            idempotency_key=idempotency_key,
+            meeting_id=meeting_id,
+            user_id=user_id,
+            channel=channel,
+            status="pending",
+            payload=payload or {},
+            retry_count=0,
+        )
+        s.add(new_disp)
+        await s.commit()
+        await s.refresh(new_disp)
+        return new_disp, True
+
+
+async def update_outbox_dispatch(
+    idempotency_key: str,
+    status: str,
+    external_id: str | None = None,
+    last_error: str | None = None,
+    session: AsyncSession | None = None,
+) -> OutboxDispatch | None:
+    """Update outbox dispatch state (sent/failed) and record external resource ID."""
+    from datetime import datetime, timezone
+    async with _get_context_session(session) as s:
+        stmt = select(OutboxDispatch).where(OutboxDispatch.idempotency_key == idempotency_key)
+        res = await s.execute(stmt)
+        disp = res.scalar_one_or_none()
+        if not disp:
+            return None
+
+        disp.status = status
+        if external_id is not None:
+            disp.external_id = external_id
+        if last_error is not None:
+            disp.last_error = last_error
+        if status == "failed":
+            disp.retry_count = (disp.retry_count or 0) + 1
+        disp.updated_at = datetime.now(timezone.utc)
+
+        await s.commit()
+        await s.refresh(disp)
+        return disp
+
+
+async def get_outbox_dispatch(
+    idempotency_key: str,
+    session: AsyncSession | None = None,
+) -> OutboxDispatch | None:
+    """Fetch an OutboxDispatch by idempotency_key."""
+    async with _get_context_session(session) as s:
+        stmt = select(OutboxDispatch).where(OutboxDispatch.idempotency_key == idempotency_key)
+        res = await s.execute(stmt)
+        return res.scalar_one_or_none()
+
+
+
 
 
 async def create_chat_session(
