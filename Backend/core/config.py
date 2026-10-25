@@ -78,7 +78,8 @@ class Settings(BaseSettings):
     slack_webhook_url: str = ""
     slack_channel:     str = "#meeting-summaries"
  
-    # --- Upstash Redis -------------------------------------------------------
+    # --- Redis / Arq Queue ---------------------------------------------------
+    redis_url:                str = "redis://localhost:6379/0"
     upstash_redis_rest_url:   str = ""
     upstash_redis_rest_token: str = ""
  
@@ -101,11 +102,13 @@ class Settings(BaseSettings):
     # a single put_object call, which works for all S3-compatible providers.
     s3_multipart_enabled: bool = True
 
-    # --- Audio chunking (for files > Groq 25 MB transcription limit) ---------
+    # --- Audio chunking & Parallel Transcription -----------------------------
     # Duration of each chunk in seconds. 600 s = 10 min.
     # At 128 kbps MP3: 10 min ≈ 9.6 MB — well under Groq's 25 MB limit.
     # Requires ffmpeg to be installed on the system PATH.
-    audio_chunk_duration_seconds: int = 600
+    audio_chunk_duration_seconds:       int   = 600
+    audio_chunk_silence_window_seconds: int   = 30
+    transcription_concurrency:          int   = 4
 
     # --- Speaker Diarization (optional) --------------------------------------
     # Identifies WHO spoke WHEN and labels the transcript:

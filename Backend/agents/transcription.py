@@ -42,8 +42,10 @@ SUPPORTED FORMATS
 .mp3 .wav .m4a .ogg .flac .webm .mp4
 """
 
+import concurrent.futures
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -352,43 +354,207 @@ def _ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
-    """Split *audio_path* into equal-duration MP3 audio-only chunks.
+def _get_audio_duration_seconds(audio_path: Path) -> float:
+    """Extract audio duration in seconds using ffprobe or ffmpeg."""
+    if shutil.which("ffprobe"):
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                return float(res.stdout.strip())
+        except Exception:
+            pass
 
-    Always outputs MP3 (strips video track with -vn and re-encodes audio at
-    64 kbps).  This is critical for video containers like MP4/WEBM where
-    stream-copy would preserve the video track and keep each chunk well above
-    Groq's 25 MB per-request limit.
+    if _ffmpeg_available():
+        cmd = ["ffmpeg", "-i", str(audio_path)]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", res.stderr)
+            if m:
+                h, m_val, s = float(m.group(1)), float(m.group(2)), float(m.group(3))
+                return h * 3600.0 + m_val * 60.0 + s
+        except Exception:
+            pass
 
-    64 kbps MP3 @ 10 min ≈ 4.8 MB — well under the 25 MB Groq limit.
-    64 kbps is fully sufficient for meeting/speech audio quality.
+    return 0.0
 
-    Args:
-        audio_path: Path to the source audio/video file.
-        chunk_dir:  Directory where chunk MP3 files will be written.
+
+def _detect_silence_intervals(
+    audio_path: Path,
+    min_duration: float = 0.3,
+    noise_db: float = -30.0,
+) -> list[tuple[float, float]]:
+    """Use ffmpeg silencedetect filter to find natural speech pauses / silences.
 
     Returns:
-        Sorted list of chunk file paths (always .mp3).
-
-    Raises:
-        RuntimeError: If ffmpeg exits with a non-zero return code.
+        List of (start_seconds, end_seconds) tuples for each silence pause.
     """
-    # Always output as MP3 regardless of input container
-    output_pattern = os.path.join(chunk_dir, "chunk_%03d.mp3")
+    if not _ffmpeg_available():
+        return []
 
     cmd = [
         "ffmpeg",
         "-i", str(audio_path),
-        "-f", "segment",
-        "-segment_time", str(CHUNK_DURATION_SECONDS),
-        "-vn",                   # strip video track (critical for MP4/WEBM)
-        "-c:a", "libmp3lame",    # re-encode as MP3
-        "-b:a", "64k",           # 64 kbps — speech quality, ~4.8 MB per 10-min chunk
-        "-reset_timestamps", "1", # timestamps restart at 0 for each chunk
-        output_pattern,
-        "-y",                    # overwrite if somehow a file exists
-        "-loglevel", "error",    # suppress progress noise; keep errors
+        "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}",
+        "-f", "null",
+        "-",
     ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        silences: list[tuple[float, float]] = []
+        current_start: float | None = None
+
+        for line in res.stderr.splitlines():
+            if "silence_start:" in line:
+                m = re.search(r"silence_start:\s*([0-9.]+)", line)
+                if m:
+                    current_start = float(m.group(1))
+            elif "silence_end:" in line and current_start is not None:
+                m = re.search(r"silence_end:\s*([0-9.]+)", line)
+                if m:
+                    end_val = float(m.group(1))
+                    silences.append((current_start, end_val))
+                    current_start = None
+
+        return silences
+    except Exception as exc:
+        logger.debug("ffmpeg silencedetect failed or skipped: %s", exc)
+        return []
+
+
+def _compute_smart_cut_points(
+    total_duration: float,
+    target_chunk_duration: float = 600.0,
+    search_window: float = 30.0,
+    silences: list[tuple[float, float]] | None = None,
+) -> list[float]:
+    """Compute silence-aligned cut points near target interval boundaries.
+
+    Prevents cutting in the middle of words or sentences by finding natural
+    pauses within [target - search_window, target + search_window].
+    """
+    if total_duration <= target_chunk_duration:
+        return []
+
+    cut_points: list[float] = []
+    current_target = target_chunk_duration
+    silences = silences or []
+
+    while current_target < total_duration - 15.0:
+        window_start = max(0.0, current_target - search_window)
+        window_end = min(total_duration, current_target + search_window)
+
+        candidates = [
+            (s, e) for (s, e) in silences
+            if not (e < window_start or s > window_end)
+        ]
+
+        if candidates:
+            best = min(
+                candidates,
+                key=lambda x: abs(((x[0] + x[1]) / 2.0) - current_target),
+            )
+            cut_point = round((best[0] + best[1]) / 2.0, 2)
+        else:
+            cut_point = round(current_target, 2)
+
+        cut_points.append(cut_point)
+        current_target = cut_point + target_chunk_duration
+
+    return cut_points
+
+
+def _deduplicate_boundary_text(prev_text: str, next_text: str, max_overlap_words: int = 15) -> str:
+    """Detect and remove duplicate word sequences across adjacent chunk boundaries."""
+    p_str = prev_text.strip()
+    n_str = next_text.strip()
+    if not p_str:
+        return n_str
+    if not n_str:
+        return p_str
+
+    prev_words = p_str.split()
+    next_words = n_str.split()
+
+    def _norm(w: str) -> str:
+        return re.sub(r"[^\w]", "", w).lower()
+
+    max_check = min(len(prev_words), len(next_words), max_overlap_words)
+    best_overlap = 0
+
+    for n in range(max_check, 1, -1):
+        prev_tail = [_norm(w) for w in prev_words[-n:]]
+        next_head = [_norm(w) for w in next_words[:n]]
+        if prev_tail == next_head and any(prev_tail):
+            best_overlap = n
+            break
+
+    if best_overlap > 0:
+        trimmed_next = " ".join(next_words[best_overlap:])
+        return f"{p_str} {trimmed_next}".strip()
+    return f"{p_str} {n_str}"
+
+
+# Global cache mapping chunk file path strings to their computed silence time offsets
+_CHUNK_OFFSETS_CACHE: dict[str, float] = {}
+
+
+def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
+    """Split *audio_path* into silence-aligned MP3 audio-only chunks.
+
+    Always outputs MP3 (strips video track with -vn and re-encodes audio at
+    64 kbps). Uses silence detection near chunk boundaries to prevent word slicing.
+    """
+    output_pattern = os.path.join(chunk_dir, "chunk_%03d.mp3")
+
+    total_duration = _get_audio_duration_seconds(audio_path)
+    search_window = float(getattr(settings, "audio_chunk_silence_window_seconds", 30))
+    silences = _detect_silence_intervals(audio_path)
+    cut_points = _compute_smart_cut_points(
+        total_duration,
+        target_chunk_duration=CHUNK_DURATION_SECONDS,
+        search_window=search_window,
+        silences=silences,
+    )
+
+    if cut_points:
+        logger.info(
+            "Using silence-aware cut points near pauses: %s (total: %.1fs)",
+            cut_points, total_duration,
+        )
+        cmd = [
+            "ffmpeg",
+            "-i", str(audio_path),
+            "-f", "segment",
+            "-segment_times", ",".join(str(p) for p in cut_points),
+            "-vn",
+            "-c:a", "libmp3lame",
+            "-b:a", "64k",
+            "-reset_timestamps", "1",
+            output_pattern,
+            "-y",
+            "-loglevel", "error",
+        ]
+    else:
+        cmd = [
+            "ffmpeg",
+            "-i", str(audio_path),
+            "-f", "segment",
+            "-segment_time", str(CHUNK_DURATION_SECONDS),
+            "-vn",
+            "-c:a", "libmp3lame",
+            "-b:a", "64k",
+            "-reset_timestamps", "1",
+            output_pattern,
+            "-y",
+            "-loglevel", "error",
+        ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -404,38 +570,39 @@ def _split_audio_with_ffmpeg(audio_path: Path, chunk_dir: str) -> list[Path]:
             "The audio file may be corrupt or in an unsupported container."
         )
 
+    # Cache computed cut offsets for accurate timestamp mapping
+    offsets = [0.0] + cut_points
+    for i, c in enumerate(chunks):
+        c_offset = offsets[i] if i < len(offsets) else i * CHUNK_DURATION_SECONDS
+        _CHUNK_OFFSETS_CACHE[str(c)] = float(c_offset)
+
     chunk_sizes = [f"{c.stat().st_size / (1024*1024):.1f} MB" for c in chunks]
     logger.info(
-        "Audio split into %d chunk(s) of ~%ds each | sizes=%s | source=%s",
+        "Audio split into %d chunk(s) | sizes=%s | source=%s",
         len(chunks),
-        CHUNK_DURATION_SECONDS,
         chunk_sizes,
         audio_path.name,
     )
     return chunks
 
 
-
 def _transcribe_in_chunks(
     client: Groq,
     audio_path: Path,
     want_timed: bool = False,
+    concurrency: int | None = None,
 ) -> ChunkTranscriptionResult:
-    """Split *audio_path* into chunks and transcribe each one.
+    """Split *audio_path* into chunks and transcribe them in parallel with concurrency cap.
 
     Args:
-        client:     Authenticated Groq client.
-        audio_path: Path to the large audio file (> Groq 25 MB limit).
-        want_timed: If True, collect timed segments (with start/end offsets)
-                    and word timestamps for audio sync and diarization alignment.
+        client:      Authenticated Groq client.
+        audio_path:  Path to the large audio file (> Groq 25 MB limit).
+        want_timed:  If True, collect timed segments and word timestamps with global offsets.
+        concurrency: Max concurrent chunk transcriptions (defaults to settings.transcription_concurrency).
 
     Returns:
         ChunkTranscriptionResult unpacking as (plain_transcript, timed_segments),
         with .words attribute containing full-file word timestamps.
-
-    Raises:
-        ValueError:  ffmpeg is not installed.
-        RuntimeError: Splitting or all-chunks-empty.
     """
     if not _ffmpeg_available():
         raise ValueError(
@@ -447,63 +614,96 @@ def _transcribe_in_chunks(
             "(Windows: winget install ffmpeg  |  macOS: brew install ffmpeg)"
         )
 
+    concurrency_limit = concurrency or getattr(settings, "transcription_concurrency", 4)
+
     with tempfile.TemporaryDirectory(prefix="meeting_agent_chunks_") as chunk_dir:
         chunks = _split_audio_with_ffmpeg(audio_path, chunk_dir)
-        plain_texts: list[str] = []
+        num_chunks = len(chunks)
+
+        # Resolve time offsets for each chunk
+        chunk_offsets: list[float] = []
+        for i, c in enumerate(chunks):
+            offset = _CHUNK_OFFSETS_CACHE.get(str(c), getattr(c, "_time_offset", float(i * CHUNK_DURATION_SECONDS)))
+            chunk_offsets.append(offset)
+
+        def _worker_transcribe_chunk(item: tuple[int, Path, float]) -> tuple[int, list[str], list[dict], list[dict]]:
+            idx, c_path, offset = item
+            chunk_size_mb = c_path.stat().st_size / (1024 * 1024) if c_path.exists() else 0.0
+
+            logger.info(
+                "Transcribing chunk %d/%d (parallel pool) | %.2f MB | offset=%.1fs | file=%s",
+                idx + 1, num_chunks, chunk_size_mb, offset, c_path.name,
+            )
+
+            c_plain: list[str] = []
+            c_timed: list[dict] = []
+            c_words: list[dict] = []
+
+            if want_timed:
+                segs = _call_whisper_verbose(client, c_path)
+                w_list = getattr(segs, "words", None) or []
+                if not w_list and segs:
+                    w_list = _synthesize_words_from_segments(segs)
+
+                for seg in segs:
+                    seg_dict = dict(seg)
+                    seg_dict["start"] += offset
+                    seg_dict["end"]   += offset
+                    if seg_dict.get("text", "").strip():
+                        c_plain.append(seg_dict["text"].strip())
+                    c_timed.append(seg_dict)
+
+                for w in w_list:
+                    w_dict = dict(w)
+                    w_dict["start"] += offset
+                    w_dict["end"]   += offset
+                    c_words.append(w_dict)
+            else:
+                txt = _call_whisper_api(client, c_path).strip()
+                if txt:
+                    c_plain.append(txt)
+
+            return (idx, c_plain, c_timed, c_words)
+
+        tasks = [(i, c, chunk_offsets[i]) for i, c in enumerate(chunks)]
+        max_workers = max(1, min(concurrency_limit, num_chunks))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            batch_results = list(executor.map(_worker_transcribe_chunk, tasks))
+
+        # Sort strictly by chunk index
+        batch_results.sort(key=lambda r: r[0])
+
+        all_plain_blocks: list[str] = []
         all_timed: list[dict] = []
         all_words: list[dict] = []
 
-        for i, chunk_path in enumerate(chunks):
-            chunk_size_mb = chunk_path.stat().st_size / (1024 * 1024)
-            time_offset = i * CHUNK_DURATION_SECONDS
+        for _, c_plain, c_timed, c_words in batch_results:
+            if c_plain:
+                chunk_text = " ".join(c_plain)
+                all_plain_blocks.append(chunk_text)
+            all_timed.extend(c_timed)
+            all_words.extend(c_words)
 
-            logger.info(
-                "Transcribing chunk %d/%d | %.2f MB | file=%s",
-                i + 1, len(chunks), chunk_size_mb, chunk_path.name,
-            )
-
-            try:
-                if want_timed:
-                    segs = _call_whisper_verbose(client, chunk_path)
-                    chunk_words = getattr(segs, "words", None) or []
-                    if not chunk_words and segs:
-                        chunk_words = _synthesize_words_from_segments(segs)
-
-                    # Apply time offset so segments map to full-file timestamps
-                    for seg in segs:
-                        seg["start"] += time_offset
-                        seg["end"]   += time_offset
-                        if seg["text"].strip():
-                            plain_texts.append(seg["text"].strip())
-                    all_timed.extend(segs)
-
-                    for w in chunk_words:
-                        w["start"] += time_offset
-                        w["end"]   += time_offset
-                    all_words.extend(chunk_words)
-                else:
-                    text = _call_whisper_api(client, chunk_path).strip()
-                    if text:
-                        plain_texts.append(text)
-
-            except (RateLimitError, APITimeoutError, APIConnectionError, APIError) as exc:
-                logger.error("Chunk %d/%d transcription failed: %s", i + 1, len(chunks), exc)
-                raise
-
-        if not plain_texts:
+        if not all_plain_blocks:
             raise RuntimeError(
                 "Chunked transcription produced no output. "
                 "All chunks returned empty transcripts."
             )
 
-    plain = " ".join(plain_texts)
+        # Merge plain text with boundary deduplication
+        merged_text = all_plain_blocks[0]
+        for next_block in all_plain_blocks[1:]:
+            merged_text = _deduplicate_boundary_text(merged_text, next_block)
+
     logger.info(
-        "Chunked transcription complete | chunks=%d | words=%d | timed_words=%d",
+        "Parallel chunked transcription complete | chunks=%d (concurrency=%d) | words=%d | timed_words=%d",
         len(chunks),
-        len(plain.split()),
+        max_workers,
+        len(merged_text.split()),
         len(all_words),
     )
-    return ChunkTranscriptionResult(plain, all_timed, all_words)
+    return ChunkTranscriptionResult(merged_text, all_timed, all_words)
 
 
 # =============================================================================
