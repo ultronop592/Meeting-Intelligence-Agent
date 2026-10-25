@@ -425,6 +425,69 @@ async def recover_stale_jobs() -> int:
             return 0
 
 
+async def detect_and_recover_stuck_jobs(
+    timeout_minutes: int = 5,
+    max_retries: int = 3,
+    session: AsyncSession | None = None,
+) -> list[str]:
+    """Detect jobs in 'processing' state without recent heartbeat and recover them.
+
+    If a worker crashed or was killed mid-pipeline:
+      - If retry_count < max_retries: increments retry_count and leaves in 'processing' / flags for resume.
+      - If retry_count >= max_retries: marks as 'failed' (dead letter queue).
+
+    Returns list of recovered job IDs.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=timeout_minutes)
+    recovered_ids: list[str] = []
+
+    async with _get_context_session(session) as s:
+        try:
+            stmt = select(ProcessingJob).where(ProcessingJob.status == "processing")
+            res = await s.execute(stmt)
+            jobs = res.scalars().all()
+
+            for job in jobs:
+                last_time = job.last_heartbeat or job.started_at
+                if last_time and last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=timezone.utc)
+
+                if last_time and last_time < cutoff:
+                    current_retries = job.retry_count or 0
+                    if current_retries < max_retries:
+                        job.retry_count = current_retries + 1
+                        job.last_heartbeat = now
+                        errs = list(job.errors or [])
+                        errs.append(f"Heartbeat timeout detected; scheduled for resume from checkpoint (attempt {job.retry_count}).")
+                        job.errors = errs
+                        recovered_ids.append(job.id)
+                        logger.warning(
+                            "Recovered stuck job %s (attempt %d/%d) from checkpoint",
+                            job.id, job.retry_count, max_retries,
+                        )
+                    else:
+                        job.status = "failed"
+                        job.completed_at = now
+                        errs = list(job.errors or [])
+                        errs.append(f"Job exceeded maximum retry attempts ({max_retries}) after worker heartbeat timeouts.")
+                        job.errors = errs
+                        recovered_ids.append(job.id)
+                        logger.error(
+                            "Job %s moved to dead-letter (failed after %d heartbeat timeouts)",
+                            job.id, max_retries,
+                        )
+
+            await s.commit()
+            return recovered_ids
+        except Exception as exc:
+            logger.error("Failed running detect_and_recover_stuck_jobs: %s", exc)
+            await s.rollback()
+            return []
+
+
 # =============================================================================
 # Context Session Helper
 # =============================================================================
