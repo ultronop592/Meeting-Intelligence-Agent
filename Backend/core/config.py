@@ -78,10 +78,12 @@ class Settings(BaseSettings):
     slack_webhook_url: str = ""
     slack_channel:     str = "#meeting-summaries"
  
-    # --- Redis / Arq Queue ---------------------------------------------------
-    redis_url:                str = "redis://localhost:6379/0"
-    upstash_redis_rest_url:   str = ""
-    upstash_redis_rest_token: str = ""
+    # --- Redis / Arq Queue & Durable Scheduler -------------------------------
+    redis_url:                    str  = "redis://localhost:6379/0"
+    upstash_redis_rest_url:       str  = ""
+    upstash_redis_rest_token:     str  = ""
+    enable_arq_queue:             bool = True
+    run_scheduler_in_web_process: bool = False  # False in multi-worker deploys: single Arq worker handles reminder cron
  
     # --- File upload & storage cleanup ---------------------------------------
     max_upload_size_mb: int = 1024

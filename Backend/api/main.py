@@ -60,9 +60,20 @@ async def lifespan(app: FastAPI):
     stale_count = cleanup_stale_uploads(settings.upload_dir, settings.cleanup_stale_uploads_hours)
     if stale_count:
         logger.info("Purged %d stale uploaded audio file(s) on startup", stale_count)
-    reminder_scheduler.start()
+    # Phase 3 Problem 1 Fix: Only run in-process scheduler if explicitly enabled.
+    # In multi-worker deployments, a single Arq worker runs the reminder cron, preventing duplicates.
+    if settings.run_scheduler_in_web_process:
+        reminder_scheduler.start()
+        logger.info("Local reminder scheduler started in web process")
+    else:
+        logger.info("Web process reminder scheduler disabled — scheduled jobs handled by dedicated Arq worker")
+
     yield
-    await reminder_scheduler.stop()
+
+    if settings.run_scheduler_in_web_process:
+        await reminder_scheduler.stop()
+    from core.queue import close_arq_pool
+    await close_arq_pool()
     logger.info("Shutting down %s", settings.app_name)
 
 

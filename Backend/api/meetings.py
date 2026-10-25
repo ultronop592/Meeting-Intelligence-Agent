@@ -446,7 +446,12 @@ async def process_meeting(
 
     job_id = str(uuid.uuid4())
     user_id = current_user.id
-    background_tasks.add_task(_process_job, job_id, request, user_id=user_id)
+
+    from core.queue import enqueue_meeting_job
+    enqueued = await enqueue_meeting_job(job_id, request.model_dump(), user_id=user_id)
+    if not enqueued:
+        background_tasks.add_task(_process_job, job_id, request, user_id=user_id)
+
     return {"job_id": job_id, "message": "Meeting processing started.", "status": "processing"}
 
 
