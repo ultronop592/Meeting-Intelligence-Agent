@@ -344,3 +344,33 @@ class OutboxDispatch(Base):
 
     meeting = relationship("Meeting", back_populates="outbox_dispatches")
     user    = relationship("User")
+
+
+# TABLE — audit_logs (Phase 4: Security & Safety)
+
+class AuditLog(Base):
+    """Append-only record of every external write attempt.
+
+    Records who approved what dispatch, on which channel, with what outcome.
+    Policy-blocked events are captured with the violated rule name so operators
+    can correlate injection attempts with pipeline runs.
+    """
+    __tablename__ = "audit_logs"
+
+    id             = Column(String, primary_key=True, default=_uuid)
+    user_id        = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    job_id         = Column(String, nullable=True, index=True)   # processing job that triggered the dispatch
+    channel        = Column(String(32),  nullable=False, index=True)  # "jira" | "slack" | "email" | "calendar" | "system"
+    outcome        = Column(String(32),  nullable=False, index=True)  # "success" | "policy_blocked" | "error" | "skipped"
+    entity_summary = Column(String(1024), nullable=False)             # human-readable description of what was dispatched
+    policy_rule    = Column(String(128), nullable=True)               # policy rule name when outcome == "policy_blocked"
+    extra          = Column(JSON, nullable=True)                      # arbitrary metadata (recipients, ticket key, etc.)
+    created_at     = Column(DateTime(timezone=True), default=_now, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_audit_logs_user_created",    "user_id",  "created_at"),
+        Index("ix_audit_logs_job_channel",     "job_id",   "channel"),
+        Index("ix_audit_logs_outcome_created", "outcome",  "created_at"),
+    )
+
+    user = relationship("User")
