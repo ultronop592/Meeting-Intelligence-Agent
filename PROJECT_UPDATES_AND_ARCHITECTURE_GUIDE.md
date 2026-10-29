@@ -14,6 +14,7 @@ A comprehensive overview of recent major updates, architectural patterns, and co
    - [🚀 5. High Concurrency & Production Scalability](#-5-high-concurrency--production-scalability)
    - [🧱 6. Modular Domain Routers](#-6-modular-domain-routers)
    - [🛡️ 7. Upstash Redis TLS & Rate Limiter Hardening](#️-7-upstash-redis-tls--rate-limiter-hardening)
+   - [⚙️ 8. Phase 3 — Arq Distributed Worker & Durable Pipeline](#️-8-phase-3--arq-distributed-worker--durable-pipeline)
 3. [Deep-Dive Code Walkthrough](#3-deep-dive-code-walkthrough)
    - [The LangGraph Multi-Agent Pipeline (`Backend/graph/agent_graph.py`)](#the-langgraph-multi-agent-pipeline)
    - [Audio Transcription & Diarization (`Backend/agents/transcription.py`)](#audio-transcription--diarization)
@@ -114,6 +115,16 @@ flowchart TD
   - Added `redis>=5.0.0` in `requirements.txt`.
   - Enforced `rediss://` (TLS encrypted protocol) required by Upstash.
   - Added startup health verification (`storage.check()`) with graceful in-memory fallback.
+
+### ⚙️ 8. Phase 3 — Arq Distributed Worker & Durable Pipeline
+- **Problem**: Meeting processing ran inline with HTTP request handlers — a crash mid-pipeline lost all progress and the job had to start from scratch. Reminder crons ran on every Gunicorn worker instance causing duplicate dispatches.
+- **Solution** (`Backend/worker.py`, `Backend/core/queue.py`):
+  - **Arq Queue Worker**: Replaced inline `asyncio.create_task` with a durable `arq`-based Redis job queue. The FastAPI app enqueues jobs; a separate `arq worker.WorkerSettings` process picks them up — completely decoupling I/O-heavy AI processing from web-serving.
+  - **Durable Checkpointing**: Each LangGraph node writes a checkpoint to Postgres on success. If the worker crashes mid-pipeline, `recover_stuck_jobs_cron` detects the stuck job (no heartbeat > 5 min) and re-enqueues it starting from the last successful checkpoint node — **zero work lost**.
+  - **Single Distributed Reminder Cron**: `check_due_reminders_cron` runs on exactly one Arq worker at `minute=0` each hour, eliminating the multi-worker race condition that caused duplicate Slack/email reminders.
+  - **Outbox Pattern & Idempotency**: Dispatch events (Slack, Email, Jira, Calendar) are written to an outbox table with an idempotency key before firing. Duplicate deliveries are rejected using a unique constraint on `(job_id, channel, entity_id)`.
+  - **Concurrency Cap**: `WorkerSettings.max_jobs` is capped via `settings.transcription_concurrency` (default 4) to prevent memory and API-rate overload on constrained instances.
+  - **VAD-Aware Parallel Chunking**: Audio splitting now uses voice-activity detection to avoid cutting mid-word. Chunks are transcribed in parallel using `asyncio.gather`, then merged with global speaker-label consistency.
 
 ---
 
@@ -257,6 +268,8 @@ A React hook providing speech-to-text during microphone recording:
 | `DATABASE_URL_SYNC` | Neon Postgres sync connection string for Alembic migrations. |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis URL for distributed rate limiting. |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis security token. |
+| `ARQ_REDIS_URL` | Redis connection URL for the Arq job queue (e.g. `rediss://...` for Upstash TLS). |
+| `TRANSCRIPTION_CONCURRENCY` | Max parallel Arq worker jobs (default: `4`). Tune per available RAM/API quota. |
 | `S3_ENDPOINT_URL` | Cloud object storage endpoint (e.g. Supabase S3 or Cloudflare R2). |
 | `S3_ACCESS_KEY_ID` | Cloud object storage access key ID. |
 | `S3_SECRET_ACCESS_KEY` | Cloud object storage secret access key. |
@@ -270,4 +283,4 @@ A React hook providing speech-to-text during microphone recording:
 
 ---
 
-*Document created on October 3, 2026 for ultronop592/Meeting-Intelligence-Agent.*
+*Document created on October 3, 2026 · Last updated October 29, 2026 for ultronop592/Meeting-Intelligence-Agent.*
