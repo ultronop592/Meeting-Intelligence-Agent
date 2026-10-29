@@ -127,6 +127,22 @@ class Settings(BaseSettings):
     # transcription falls back to plain non-diarized text automatically.
     hf_token:            str  = ""    # HuggingFace access token
     diarization_enabled: bool = True  # Set False to always skip diarization
+
+    # --- Phase 4: Security & Safety ------------------------------------------
+    # AES-256-GCM key for encrypting credentials at rest (base64url, 32 bytes).
+    # Generate with: python -c "from core.encryption import generate_new_key; print(generate_new_key())"
+    credential_encryption_key:          str  = ""
+    credential_encryption_key_previous: str  = ""  # previous key for rotation
+
+    # Policy gate limits (external write caps per meeting)
+    policy_allowed_email_domains:  str  = ""   # comma-separated, e.g. "company.com,partner.org"
+    policy_max_jira_tickets:       int  = 10
+    policy_max_calendar_events:    int  = 5
+    policy_max_slack_msg_chars:    int  = 4000
+
+    # PII redaction — strips emails, phones, Aadhaar/PAN from transcripts
+    # before they are sent to an external LLM.
+    pii_redaction_enabled: bool = False
  
     # --- Computed properties -------------------------------------------------
     @property
