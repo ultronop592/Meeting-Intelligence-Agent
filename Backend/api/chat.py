@@ -50,14 +50,17 @@ SYSTEM_CHAT_PROMPT = (
     "You are an elite Meeting Intelligence AI Agent powered by advanced LLM reasoning. "
     "You have comprehensive access to all details of the user's meeting discussions, including "
     "executive summaries, detailed minutes, assigned action items with owners and deadlines, "
-    "architectural and business decisions, attendees with speaker labels, and the complete verbatim dialogue transcript.\n\n"
+    "architectural and business decisions, attendees with speaker labels, and relevant verbatim "
+    "transcript excerpts with precise timestamps.\n\n"
     "INSTRUCTIONS:\n"
     "1. Answer questions thoroughly, accurately, and naturally based strictly on the provided meeting context.\n"
     "2. When asked about action items, explicitly detail who owns them, the urgency/priority, status, and due dates.\n"
-    "3. When asked about decisions, opinions, or debates, cite specific quotes or speaker turns from the transcript.\n"
+    "3. When asked about decisions, opinions, or debates, cite specific quotes and include the timestamp "
+    "   in the format ⏱ [MM:SS] so the user can jump to that moment in the audio player.\n"
     "4. Format your responses with clean, readable GitHub-flavored Markdown (bolding, structured bullet points, numbered lists, or tables).\n"
     "5. If a question cannot be answered from the meeting record, state that clearly and mention what related topics were covered.\n"
-    "6. Maintain a helpful, confident, executive pair-programmer and chief-of-staff tone."
+    "6. Maintain a helpful, confident, executive pair-programmer and chief-of-staff tone.\n"
+    "7. When referencing transcript excerpts, always include the timestamp [MM:SS] as an inline citation."
 )
 
 
@@ -172,9 +175,51 @@ async def _build_full_meeting_context(
         ]
         context_sections.append("KEY DECISIONS MADE:\n" + "\n".join(dec_lines))
 
-    transcript_text = getattr(target_meeting, "diarized_transcript", None) or getattr(target_meeting, "transcript", None)
-    if transcript_text:
-        context_sections.append(f"VERBATIM MEETING DIALOGUE TRANSCRIPT:\n{transcript_text[:60000]}")
+    # Phase 6: Chunk-based retrieval instead of full-transcript stuffing
+    try:
+        from core.chunk_retriever import retrieve_chunks
+        relevant_chunks = await retrieve_chunks(
+            db=db,
+            question=question,
+            meeting_id=target_meeting.id,
+            user_id=current_user.id if current_user else None,
+            top_k=8,
+        )
+        if relevant_chunks:
+            chunk_lines = [
+                "RELEVANT TRANSCRIPT EXCERPTS (cite timestamps when answering):"
+            ]
+            for ch in relevant_chunks:
+                speaker_tag = f"[{ch['speaker']}] " if ch.get("speaker") else ""
+                chunk_lines.append(
+                    f"\n⏱ [{ch['start_ts']}–{ch['end_ts']}] {speaker_tag}{ch['text']}"
+                )
+            context_sections.append("\n".join(chunk_lines))
+            # Record chunk sources for citations
+            for ch in relevant_chunks:
+                sources.append(
+                    f"chunk:{ch['meeting_id']}:{ch['start_ts']}-{ch['end_ts']}"
+                )
+        else:
+            # Graceful fallback: still include a truncated transcript
+            transcript_text = (
+                getattr(target_meeting, "diarized_transcript", None)
+                or getattr(target_meeting, "transcript", None)
+            )
+            if transcript_text:
+                context_sections.append(
+                    f"VERBATIM MEETING DIALOGUE TRANSCRIPT:\n{transcript_text[:20000]}"
+                )
+    except Exception as chunk_exc:
+        logger.debug("Chunk retrieval error, falling back to full transcript: %s", chunk_exc)
+        transcript_text = (
+            getattr(target_meeting, "diarized_transcript", None)
+            or getattr(target_meeting, "transcript", None)
+        )
+        if transcript_text:
+            context_sections.append(
+                f"VERBATIM MEETING DIALOGUE TRANSCRIPT:\n{transcript_text[:20000]}"
+            )
 
     if mem_matches:
         mem_block = ["=== RELEVANT CROSS-MEETING MEMORY & HISTORICAL INTELLIGENCE ==="]
