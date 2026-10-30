@@ -157,3 +157,4 @@ async def test_chat_context_incorporates_chunks(db_session):
     assert "RELEVANT TRANSCRIPT EXCERPTS" in context
     assert "⏱ [" in context
     assert any(s.startswith("chunk:") for s in sources)
+
