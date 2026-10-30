@@ -102,6 +102,7 @@ class Meeting(Base):
     notifications_log = relationship("NotificationLog", back_populates="meeting", cascade="all, delete-orphan")
     chat_sessions     = relationship("ChatSession",     back_populates="meeting", cascade="all, delete-orphan")
     outbox_dispatches = relationship("OutboxDispatch", back_populates="meeting", cascade="all, delete-orphan")
+    transcript_chunks = relationship("TranscriptChunk", back_populates="meeting", cascade="all, delete-orphan")
 
 
 # TABLE 2 — action_items
@@ -374,3 +375,33 @@ class AuditLog(Base):
     )
 
     user = relationship("User")
+
+
+# TABLE — transcript_chunks (Phase 6: Retrieval Upgrade)
+
+class TranscriptChunk(Base):
+    """A 30-60 second window of a meeting transcript for chunk-level RAG retrieval.
+
+    Each chunk stores speaker metadata, start/end timestamps, plain text, and a
+    768-dim pgvector embedding. Enables timestamp-cited answers instead of 60k
+    full-transcript stuffing.
+    """
+    __tablename__ = "transcript_chunks"
+
+    id          = Column(String,  primary_key=True, default=_uuid)
+    meeting_id  = Column(String,  ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    chunk_index = Column(Integer, nullable=False)       # 0-based position within the meeting
+    start_sec   = Column(Float,   nullable=False)       # seconds from audio start
+    end_sec     = Column(Float,   nullable=False)       # seconds from audio start
+    speaker     = Column(String(128), nullable=True)   # dominant speaker label e.g. "SPEAKER_01"
+    text        = Column(Text,    nullable=False)       # verbatim transcript text of this window
+    embedding   = Column(Vector(768), nullable=True)   # dense semantic vector
+
+    created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_transcript_chunks_meeting_idx",   "meeting_id", "chunk_index"),
+        Index("ix_transcript_chunks_meeting_time",  "meeting_id", "start_sec"),
+    )
+
+    meeting = relationship("Meeting", back_populates="transcript_chunks")
