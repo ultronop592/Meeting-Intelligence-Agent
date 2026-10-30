@@ -251,6 +251,13 @@ async def save_to_database(state: AgentState) -> dict:
             except Exception as mem_err:
                 logger.warning("Memory indexing warning for meeting %s: %s", meeting_id, mem_err)
 
+            # --- 7. Phase 6: Index chunk-level embeddings for hybrid retrieval ---
+            try:
+                from core.chunk_indexer import index_meeting_chunks
+                await index_meeting_chunks(session, meeting_id)
+            except Exception as chunk_err:
+                logger.warning("Chunk indexing warning for meeting %s: %s", meeting_id, chunk_err)
+
             return {
                 "meeting_id":      meeting_id,
                 "completed_nodes": state.completed_nodes + ["save_to_database"],
