@@ -1,4 +1,4 @@
-.PHONY: eval eval-live eval-calibrate eval-validate test up down build clean help
+.PHONY: eval eval-live eval-calibrate eval-validate eval-phase6 test up down build clean help
 
 help:
 	@echo "Meeting Intelligence Agent Commands:"
@@ -6,6 +6,7 @@ help:
 	@echo "  make eval-live      Execute live multi-agent pipeline and score predictions"
 	@echo "  make eval-calibrate Run LLM Judge calibration across 30 human-labeled samples"
 	@echo "  make eval-validate  Validate schemas and formatting of all dataset JSON files"
+	@echo "  make eval-phase6    Run Phase 6 chunk retrieval benchmark (recall@k, MRR, citations)"
 	@echo "  make up             Start backend and frontend stack with docker compose"
 	@echo "  make down           Stop containerized stack"
 	@echo "  make build          Build backend and frontend container images"
@@ -22,6 +23,9 @@ eval-calibrate:
 
 eval-validate:
 	python -m eval.validate_dataset
+
+eval-phase6:
+	python -m eval.phase6_retrieval_eval --top-k 5 --output eval/results/phase6.json
 
 test:
 	pytest Backend/tests -v
