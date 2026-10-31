@@ -80,7 +80,6 @@ class Meeting(Base):
     is_publicly_shared     = Column(Boolean, default=False, nullable=False)
 
     # EmbeddingStatus — tracks RAG pipeline: pending → completed/failed
-    # SAEnum maps the Python string values directly to a Postgres ENUM type
     embedding_status = Column(
         SAEnum("pending", "completed", "failed", name="embeddingstatus"),
         nullable=False,
@@ -88,13 +87,11 @@ class Meeting(Base):
     )
 
     # Vector column for semantic search (1536 dims = OpenAI, 768 = sentence-transformers)
-    # Stored here so you can search across all meetings: "what did we decide about auth?"
     transcript_embedding = Column(Vector(768), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
 
     # Relationships — SQLAlchemy loads related rows automatically
-    # cascade="all, delete-orphan" means: deleting a meeting deletes all its children
     user              = relationship("User",            back_populates="meetings")
     action_items      = relationship("ActionItem",      back_populates="meeting", cascade="all, delete-orphan")
     decisions         = relationship("Decision",         back_populates="meeting", cascade="all, delete-orphan")
@@ -103,6 +100,32 @@ class Meeting(Base):
     chat_sessions     = relationship("ChatSession",     back_populates="meeting", cascade="all, delete-orphan")
     outbox_dispatches = relationship("OutboxDispatch", back_populates="meeting", cascade="all, delete-orphan")
     transcript_chunks = relationship("TranscriptChunk", back_populates="meeting", cascade="all, delete-orphan")
+
+    # Phase 7: The Differentiator relationships
+    commitment_links_as_source = relationship(
+        "CommitmentLink",
+        foreign_keys="CommitmentLink.source_meeting_id",
+        back_populates="source_meeting",
+        cascade="all, delete-orphan",
+    )
+    commitment_links_as_target = relationship(
+        "CommitmentLink",
+        foreign_keys="CommitmentLink.target_meeting_id",
+        back_populates="target_meeting",
+        cascade="all, delete-orphan",
+    )
+    decision_contradictions_as_new = relationship(
+        "DecisionContradiction",
+        foreign_keys="DecisionContradiction.new_meeting_id",
+        back_populates="new_meeting",
+        cascade="all, delete-orphan",
+    )
+    decision_contradictions_as_prior = relationship(
+        "DecisionContradiction",
+        foreign_keys="DecisionContradiction.prior_meeting_id",
+        back_populates="prior_meeting",
+        cascade="all, delete-orphan",
+    )
 
 
 # TABLE 2 — action_items
@@ -138,15 +161,33 @@ class ActionItem(Base):
     owner_status           = Column(String(32), nullable=False, default="stated")
     verification_reasoning = Column(Text, nullable=True)
 
+    # Phase 7: Cross-Meeting Commitment Tracking
+    is_repeated_commitment    = Column(Boolean, nullable=False, default=False)
+    repeated_from_meeting_id  = Column(String, nullable=True)
+    days_unresolved           = Column(Integer, nullable=False, default=0)
+
     created_at = Column(DateTime(timezone=True), default=_now, nullable=False)
 
     __table_args__ = (
         Index("ix_action_items_meeting_status", "meeting_id", "status"),
         Index("ix_action_items_due_date", "due_date"),
         Index("ix_action_items_needs_review", "meeting_id", "needs_review"),
+        Index("ix_action_items_repeated", "is_repeated_commitment"),
     )
 
     meeting = relationship("Meeting", back_populates="action_items")
+    outgoing_commitment_links = relationship(
+        "CommitmentLink",
+        foreign_keys="CommitmentLink.source_action_item_id",
+        back_populates="source_action_item",
+        cascade="all, delete-orphan",
+    )
+    incoming_commitment_links = relationship(
+        "CommitmentLink",
+        foreign_keys="CommitmentLink.target_action_item_id",
+        back_populates="target_action_item",
+        cascade="all, delete-orphan",
+    )
  
 
 # TABLE 3 — decisions
@@ -167,11 +208,27 @@ class Decision(Base):
     needs_review           = Column(Boolean, nullable=False, default=False)
     verification_reasoning = Column(Text, nullable=True)
 
+    # Phase 7: Decision Contradiction Detection
+    has_contradiction         = Column(Boolean, nullable=False, default=False)
+    contradiction_count       = Column(Integer, nullable=False, default=0)
+
     created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
  
     meeting = relationship("Meeting", back_populates="decisions")
+    outgoing_contradictions   = relationship(
+        "DecisionContradiction",
+        foreign_keys="DecisionContradiction.new_decision_id",
+        back_populates="new_decision",
+        cascade="all, delete-orphan",
+    )
+    incoming_contradictions   = relationship(
+        "DecisionContradiction",
+        foreign_keys="DecisionContradiction.prior_decision_id",
+        back_populates="prior_decision",
+        cascade="all, delete-orphan",
+    )
  
- 
+
 
 # TABLE 4 — participants
 
@@ -405,3 +462,74 @@ class TranscriptChunk(Base):
     )
 
     meeting = relationship("Meeting", back_populates="transcript_chunks")
+
+
+# TABLE 10 — commitment_links (Phase 7: The Differentiator)
+
+class CommitmentLink(Base):
+    """Tracks commitments across meetings.
+    
+    Detects when an action item raised in meeting B is the same task promised in
+    meeting A, tracks aging/stale commitments, and flags 'Promised X weeks ago,
+    raised again, still not done.'
+    """
+    __tablename__ = "commitment_links"
+
+    id                    = Column(String, primary_key=True, default=_uuid)
+    source_action_item_id = Column(String, ForeignKey("action_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_action_item_id = Column(String, ForeignKey("action_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_meeting_id     = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_meeting_id     = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    link_type             = Column(String(64), nullable=False, default="repeated_commitment")
+    confidence            = Column(Float, nullable=False, default=1.0)
+    similarity_score      = Column(Float, nullable=False, default=0.0)
+    days_unresolved       = Column(Integer, nullable=False, default=0)
+    status                = Column(String(32), nullable=False, default="open")  # open, in_progress, overdue, resolved
+    explanation           = Column(Text, nullable=False)
+
+    created_at            = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_commitment_links_pair", "source_action_item_id", "target_action_item_id"),
+        Index("ix_commitment_links_meetings", "source_meeting_id", "target_meeting_id"),
+        Index("ix_commitment_links_status", "status"),
+    )
+
+    source_action_item = relationship("ActionItem", foreign_keys=[source_action_item_id], back_populates="outgoing_commitment_links")
+    target_action_item = relationship("ActionItem", foreign_keys=[target_action_item_id], back_populates="incoming_commitment_links")
+    source_meeting     = relationship("Meeting", foreign_keys=[source_meeting_id], back_populates="commitment_links_as_source")
+    target_meeting     = relationship("Meeting", foreign_keys=[target_meeting_id], back_populates="commitment_links_as_target")
+
+
+# TABLE 11 — decision_contradictions (Phase 7: The Differentiator)
+
+class DecisionContradiction(Base):
+    """Tracks contradictions and conflicts between decisions across meetings.
+
+    Detects when a new architectural or business decision conflicts with an earlier
+    decision and provides conflict rationale and resolution tracking.
+    """
+    __tablename__ = "decision_contradictions"
+
+    id                  = Column(String, primary_key=True, default=_uuid)
+    new_decision_id     = Column(String, ForeignKey("decisions.id", ondelete="CASCADE"), nullable=False, index=True)
+    prior_decision_id   = Column(String, ForeignKey("decisions.id", ondelete="CASCADE"), nullable=False, index=True)
+    new_meeting_id      = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    prior_meeting_id    = Column(String, ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    contradiction_score = Column(Float, nullable=False, default=0.0)
+    summary             = Column(Text, nullable=False)
+    resolution_status   = Column(String(32), nullable=False, default="detected")  # detected, acknowledged, overruled, dismissed
+
+    created_at          = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_decision_contradictions_pair", "new_decision_id", "prior_decision_id"),
+        Index("ix_decision_contradictions_status", "resolution_status"),
+    )
+
+    new_decision   = relationship("Decision", foreign_keys=[new_decision_id], back_populates="outgoing_contradictions")
+    prior_decision = relationship("Decision", foreign_keys=[prior_decision_id], back_populates="incoming_contradictions")
+    new_meeting    = relationship("Meeting", foreign_keys=[new_meeting_id], back_populates="decision_contradictions_as_new")
+    prior_meeting  = relationship("Meeting", foreign_keys=[prior_meeting_id], back_populates="decision_contradictions_as_prior")
