@@ -37,8 +37,8 @@ from db.models import ActionItem, CommitmentLink, Decision, DecisionContradictio
 logger = logging.getLogger(__name__)
 
 # Similarity thresholds
-COMMITMENT_SIMILARITY_THRESHOLD = 0.60
-COMMITMENT_OWNER_BOOST_THRESHOLD = 0.50
+COMMITMENT_SIMILARITY_THRESHOLD = 0.50
+COMMITMENT_OWNER_BOOST_THRESHOLD = 0.42
 CONTRADICTION_TOPIC_THRESHOLD   = 0.55
 
 # Contrasting / conflicting semantic markers

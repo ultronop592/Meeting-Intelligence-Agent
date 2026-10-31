@@ -1,0 +1,22 @@
+{
+  "benchmark": "Phase 7: The Differentiator Benchmark",
+  "timestamp": "2026-10-31T14:35:15.831729+00:00",
+  "commitment_linking": {
+    "scenarios_evaluated": 6,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "aging_calculation_accuracy": 1.0
+  },
+  "decision_contradictions": {
+    "scenarios_evaluated": 5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0
+  },
+  "hinglish_intelligence": {
+    "scenarios_evaluated": 5,
+    "intent_detection_accuracy": 1.0,
+    "temporal_normalization_accuracy": 1.0
+  }
+}

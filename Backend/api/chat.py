@@ -242,10 +242,19 @@ async def _build_full_meeting_context(
 def _get_fallback_rule_answer(meeting_context: str, question: str) -> str:
     lower_question = question.lower()
     if any(term in lower_question for term in ("how many people", "participants", "who attended", "attendees")):
+        if "PARTICIPANTS & SPEAKERS:" in meeting_context:
+            parts = meeting_context.split("PARTICIPANTS & SPEAKERS:")[1].split("\n\n")[0]
+            return f"Meeting participants recorded:\n{parts.strip()}"
         return "Please refer to the participants section extracted for this meeting."
     elif any(term in lower_question for term in ("action", "task", "todo", "assigned")):
+        if "ACTION ITEMS & ASSIGNMENTS:" in meeting_context:
+            items = meeting_context.split("ACTION ITEMS & ASSIGNMENTS:")[1].split("\n\n")[0]
+            return f"Action items recorded:\n{items.strip()}"
         return "Action items and owners are listed in the meeting details."
     elif "decision" in lower_question:
+        if "KEY DECISIONS MADE:" in meeting_context:
+            decs = meeting_context.split("KEY DECISIONS MADE:")[1].split("\n\n")[0]
+            return f"Key decisions recorded:\n{decs.strip()}"
         return "Decisions made during this meeting are summarized in the decision log."
     return "The meeting record and summary have been loaded. Please ask a specific question regarding topics discussed."
 

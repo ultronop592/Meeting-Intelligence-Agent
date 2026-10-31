@@ -45,7 +45,7 @@ HINGLISH_VOCAB = {
     "dekh", "dekho", "dekhte", "dekhunga", "dekhna", "bhejo", "bhejna", "bhejunga",
     "bana", "banao", "banayenge", "banega", "chalega", "chalta", "chal",
     # Modals & auxiliaries
-    "hai", "hain", "tha", "thi", "the", "raha", "rahi", "rahe", "gaya", "gayi", "gaye",
+    "hai", "hain", "tha", "thi", "raha", "rahi", "rahe", "gaya", "gayi", "gaye",
     "padega", "padegi", "chahiye", "sakta", "sakti", "sakte", "denge", "dunga", "dungi",
     # Pronouns & pointers
     "hum", "humne", "hamara", "aap", "aapka", "tum", "tumhara", "main", "maine", "mera", "meri",
@@ -58,10 +58,10 @@ HINGLISH_VOCAB = {
 
 # Commitment intent regex patterns
 HINGLISH_COMMITMENT_PATTERNS = [
-    # "main <task> kar dunga / karunga"
-    re.compile(r"(?:main|hum)\s+([a-zA-Z0-9_\s]{3,40}?)\s+(?:kar\s+dunga|karunga|dekh\s+lunga|dekhunga|bhej\s+dunga|fix\s+kar\s+dunga|merge\s+kar\s+dunga)", re.IGNORECASE),
-    # "<task> fix karna hai / karna padega"
-    re.compile(r"([a-zA-Z0-9_\s]{3,40}?)\s+(?:fix\s+karna\s+hai|karna\s+padega|karna\s+hoga|complete\s+karna\s+hai)", re.IGNORECASE),
+    # "main <task> kar dunga / karunga / karenge"
+    re.compile(r"(?:main|hum)\s+([a-zA-Z0-9_\s]{3,40}?)\s+(?:kar\s+dunga|karunga|karenge|dekh\s+lunga|dekhunga|bhej\s+dunga|fix\s+kar\s+dunga|fix\s+karunga|merge\s+kar\s+dunga)", re.IGNORECASE),
+    # "<task> fix karna hai / karna padega / dekhna padega / karenge"
+    re.compile(r"([a-zA-Z0-9_\s]{3,40}?)\s+(?:fix\s+karna\s+hai|karna\s+padega|dekhna\s+padega|karna\s+hoga|complete\s+karna\s+hai|schedule\s+karenge|resolve\s+karenge|karenge)", re.IGNORECASE),
     # "kal tak <task> ho jayega"
     re.compile(r"([a-zA-Z0-9_\s]{3,30}?)\s+(?:ho\s+jayega|resolve\s+kar\s+denge|finish\s+ho\s+jayega)", re.IGNORECASE),
 ]
@@ -115,8 +115,10 @@ def detect_code_switching(text: str) -> Dict[str, Any]:
         }
 
     hindi_matches = [w for w in clean_words if w in HINGLISH_VOCAB]
+    distinct_hindi = set(hindi_matches)
     score = (len(hindi_matches) + (devanagari_count // 3)) / max(1, len(clean_words))
-    is_hinglish = score >= 0.04 or devanagari_count >= 10
+    # Require at least 2 distinct Hindi tokens with sufficient density, or Devanagari script
+    is_hinglish = (len(distinct_hindi) >= 2 and score >= 0.05) or devanagari_count >= 10
 
     return {
         "is_code_switched": is_hinglish,

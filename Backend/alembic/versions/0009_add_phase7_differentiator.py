@@ -85,3 +85,4 @@ def downgrade() -> None:
     op.drop_column("action_items", "days_unresolved")
     op.drop_column("action_items", "repeated_from_meeting_id")
     op.drop_column("action_items", "is_repeated_commitment")
+

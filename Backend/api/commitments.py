@@ -158,7 +158,7 @@ async def analyze_hinglish(
 @commitments_router.post("/contradictions/{contradiction_id}/resolve")
 async def resolve_contradiction(
     contradiction_id: str,
-    resolution_status: str = Query(default="acknowledged", regex="^(acknowledged|overruled|dismissed)$"),
+    resolution_status: str = Query(default="acknowledged", pattern="^(acknowledged|overruled|dismissed)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
