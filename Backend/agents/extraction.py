@@ -103,6 +103,15 @@ def extract_information(state: AgentState) -> dict:
     try:
         groq_client = Groq(api_key=settings.groq_api_key)
         system_prompt = _get_system_prompt()
+        # Phase 7: Hinglish & Code-Switching Detection
+        try:
+            from core.hinglish_normalizer import detect_code_switching, build_hinglish_system_instruction
+            cs_result = detect_code_switching(safe_transcript)
+            if cs_result["is_code_switched"]:
+                logger.info("Extraction: Hinglish code-switching detected (score=%.2f)", cs_result["score"])
+                system_prompt += build_hinglish_system_instruction()
+        except Exception as cs_err:
+            logger.debug("Hinglish detection error: %s", cs_err)
         if getattr(state, "verification_retry_count", 0) > 0:
             system_prompt += (
                 "\n\nFEEDBACK FROM VERIFICATION PASS:\n"

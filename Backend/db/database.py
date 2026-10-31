@@ -258,6 +258,17 @@ async def save_to_database(state: AgentState) -> dict:
             except Exception as chunk_err:
                 logger.warning("Chunk indexing warning for meeting %s: %s", meeting_id, chunk_err)
 
+            # --- 8. Phase 7: Track Cross-Meeting Commitments & Contradictions ---
+            try:
+                from core.commitment_tracker import (
+                    track_and_link_commitments,
+                    detect_decision_contradictions,
+                )
+                await track_and_link_commitments(session, meeting_id)
+                await detect_decision_contradictions(session, meeting_id)
+            except Exception as diff_err:
+                logger.warning("Phase 7 commitment tracking warning for meeting %s: %s", meeting_id, diff_err)
+
             return {
                 "meeting_id":      meeting_id,
                 "completed_nodes": state.completed_nodes + ["save_to_database"],
