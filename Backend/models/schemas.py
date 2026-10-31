@@ -605,3 +605,55 @@ class LiveTranscriptionChunkResponse(BaseModel):
     chunk_size_bytes: int = Field(default=0, description="Size of uploaded audio chunk in bytes.")
 
 
+
+# =============================================================================
+# PHASE 7: THE DIFFERENTIATOR SCHEMAS
+# =============================================================================
+
+class CommitmentLinkItem(BaseModel):
+    link_id: str
+    source_meeting_title: str
+    target_meeting_title: str
+    task_description: str
+    owner: str = "Unassigned"
+    link_type: str = "repeated_commitment"
+    days_unresolved: int = 0
+    status: str = "open"
+    explanation: str
+    confidence: float = 1.0
+
+
+class CommitmentAgingBreakdown(BaseModel):
+    fresh_under_7_days: int = 0
+    aging_7_to_21_days: int = 0
+    stale_over_21_days: int = 0
+
+
+class DecisionContradictionItem(BaseModel):
+    id: str
+    summary: str
+    score: float = 0.0
+    status: str = "detected"
+
+
+class CommitmentTimelineResponse(BaseModel):
+    total_tracked_commitments: int = 0
+    aging_breakdown: CommitmentAgingBreakdown = Field(default_factory=CommitmentAgingBreakdown)
+    stale_commitments: list[CommitmentLinkItem] = Field(default_factory=list)
+    aging_commitments: list[CommitmentLinkItem] = Field(default_factory=list)
+    recent_links: list[CommitmentLinkItem] = Field(default_factory=list)
+    contradictions_count: int = 0
+    contradictions: list[DecisionContradictionItem] = Field(default_factory=list)
+
+
+class HinglishAnalysisRequest(BaseModel):
+    text: str = Field(..., min_length=3, description="Transcript text to analyze for code-switching.")
+
+
+class HinglishAnalysisResponse(BaseModel):
+    is_code_switched: bool
+    score: float
+    detected_hindi_tokens: list[str] = Field(default_factory=list)
+    language: str
+    normalized_text: str
+    extracted_commitments: list[dict[str, Any]] = Field(default_factory=list)

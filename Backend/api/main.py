@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from api.auth_routes import auth_router
 from api.integrations_routes import integrations_router
 from api.routes import router
+from api.commitments import commitments_router
 from core.config import settings
 from core.limiter import limiter
 from core.logging import setup_logging
@@ -129,6 +130,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(integrations_router)
 app.include_router(router)
+app.include_router(commitments_router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
