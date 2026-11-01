@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-11-01T10:13:41.836861+00:00",
+  "suite": "Concurrent Audio Upload Load Test",
+  "tiers_tested": [
+    10,
+    25,
+    50
+  ],
+  "results_by_tier": [
+    {
+      "concurrency": 10,
+      "total_requests": 10,
+      "successful_requests": 10,
+      "failed_requests": 0,
+      "success_rate_percent": 100.0,
+      "tier_duration_seconds": 0.109,
+      "throughput_mb_per_second": 184.0,
+      "requests_per_second": 92.0,
+      "latency_percentiles": {
+        "min": 0.0883,
+        "max": 0.107,
+        "mean": 0.0931,
+        "p50": 0.0922,
+        "p90": 0.0939,
+        "p95": 0.107,
+        "p99": 0.107
+      },
+      "rss_memory_mb": {
+        "before": 0.0,
+        "after": 0.0,
+        "delta": 0.0
+      },
+      "failure_taxonomy": {
+        "timeout": 0,
+        "oom_or_resource": 0,
+        "rate_limit": 0,
+        "parse_or_validation": 0,
+        "server_error": 0,
+        "connection_error": 0,
+        "unknown_exception": 0
+      }
+    },
+    {
+      "concurrency": 25,
+      "total_requests": 25,
+      "successful_requests": 25,
+      "failed_requests": 0,
+      "success_rate_percent": 100.0,
+      "tier_duration_seconds": 0.182,
+      "throughput_mb_per_second": 274.62,
+      "requests_per_second": 137.31,
+      "latency_percentiles": {
+        "min": 0.169,
+        "max": 0.1805,
+        "mean": 0.1763,
+        "p50": 0.1773,
+        "p90": 0.18,
+        "p95": 0.1804,
+        "p99": 0.1805
+      },
+      "rss_memory_mb": {
+        "before": 0.0,
+        "after": 0.0,
+        "delta": 0.0
+      },
+      "failure_taxonomy": {
+        "timeout": 0,
+        "oom_or_resource": 0,
+        "rate_limit": 0,
+        "parse_or_validation": 0,
+        "server_error": 0,
+        "connection_error": 0,
+        "unknown_exception": 0
+      }
+    },
+    {
+      "concurrency": 50,
+      "total_requests": 50,
+      "successful_requests": 50,
+      "failed_requests": 0,
+      "success_rate_percent": 100.0,
+      "tier_duration_seconds": 0.383,
+      "throughput_mb_per_second": 260.95,
+      "requests_per_second": 130.48,
+      "latency_percentiles": {
+        "min": 0.3673,
+        "max": 0.3778,
+        "mean": 0.3727,
+        "p50": 0.3726,
+        "p90": 0.3752,
+        "p95": 0.3755,
+        "p99": 0.3778
+      },
+      "rss_memory_mb": {
+        "before": 0.0,
+        "after": 0.0,
+        "delta": 0.0
+      },
+      "failure_taxonomy": {
+        "timeout": 0,
+        "oom_or_resource": 0,
+        "rate_limit": 0,
+        "parse_or_validation": 0,
+        "server_error": 0,
+        "connection_error": 0,
+        "unknown_exception": 0
+      }
+    }
+  ],
+  "saturation_analysis": [
+    {
+      "concurrency": 10,
+      "p50_latency": 0.0922,
+      "p95_latency": 0.107,
+      "p50_multiplier": 1.0,
+      "p95_multiplier": 1.0,
+      "is_saturated": false,
+      "reason": "Optimal throughput"
+    },
+    {
+      "concurrency": 25,
+      "p50_latency": 0.1773,
+      "p95_latency": 0.1804,
+      "p50_multiplier": 1.92,
+      "p95_multiplier": 1.69,
+      "is_saturated": false,
+      "reason": "Optimal throughput"
+    },
+    {
+      "concurrency": 50,
+      "p50_latency": 0.3726,
+      "p95_latency": 0.3755,
+      "p50_multiplier": 4.04,
+      "p95_multiplier": 3.51,
+      "is_saturated": true,
+      "reason": "Latency spike > 3x over baseline"
+    }
+  ],
+  "production_sizing": {
+    "recommended_max_concurrency_per_node": 25,
+    "breaking_point_concurrency": 50,
+    "recommended_worker_replicas": 4,
+    "recommended_worker_ram_gb": 8,
+    "recommended_redis_maxmemory_mb": 512,
+    "recommended_max_upload_size_mb": 50,
+    "rate_limiting_advice": "Enforce per-user token bucket at 10 uploads/min to prevent queue saturation."
+  }
+}
