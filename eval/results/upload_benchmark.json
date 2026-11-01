@@ -1,0 +1,275 @@
+{
+  "timestamp": "2026-11-01T10:16:06.913323+00:00",
+  "environment": {
+    "os": "Windows 11",
+    "architecture": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "python_version": "3.12.3",
+    "chunking_buffer_size": "1 MB streaming buffer (UPLOAD_CHUNK_SIZE_BYTES)",
+    "disk_io": "NVMe / SSD Direct Async Stream"
+  },
+  "scenarios": [
+    {
+      "name": "Localhost Server Ingest",
+      "rate_mbps": null,
+      "desc": "Raw server ingest & streaming disk I/O capacity"
+    },
+    {
+      "name": "100 Mbps Fast Office",
+      "rate_mbps": 100.0,
+      "desc": "Typical office fiber / gigabit LAN throttle"
+    },
+    {
+      "name": "20 Mbps Remote Worker",
+      "rate_mbps": 20.0,
+      "desc": "Typical residential home broadband / remote worker"
+    },
+    {
+      "name": "10 Mbps Cellular / Hotspot",
+      "rate_mbps": 10.0,
+      "desc": "Mobile hotspot / high-jitter field connection"
+    }
+  ],
+  "measurements": [
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 1.0,
+      "payload_bytes": 1048576,
+      "elapsed_seconds": 0.033,
+      "throughput_mb_per_second": 30.06,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 5.0,
+      "payload_bytes": 5242880,
+      "elapsed_seconds": 0.024,
+      "throughput_mb_per_second": 212.31,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 10.0,
+      "payload_bytes": 10485760,
+      "elapsed_seconds": 0.025,
+      "throughput_mb_per_second": 404.15,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 25.0,
+      "payload_bytes": 26214400,
+      "elapsed_seconds": 0.061,
+      "throughput_mb_per_second": 412.28,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 50.0,
+      "payload_bytes": 52428800,
+      "elapsed_seconds": 0.116,
+      "throughput_mb_per_second": 429.53,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "Localhost Server Ingest",
+      "payload_mb": 100.0,
+      "payload_bytes": 104857600,
+      "elapsed_seconds": 0.247,
+      "throughput_mb_per_second": 405.05,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "Localhost Unthrottled"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 1.0,
+      "payload_bytes": 1048576,
+      "elapsed_seconds": 0.094,
+      "throughput_mb_per_second": 10.59,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 5.0,
+      "payload_bytes": 5242880,
+      "elapsed_seconds": 0.418,
+      "throughput_mb_per_second": 11.96,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 10.0,
+      "payload_bytes": 10485760,
+      "elapsed_seconds": 0.828,
+      "throughput_mb_per_second": 12.08,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 25.0,
+      "payload_bytes": 26214400,
+      "elapsed_seconds": 2.069,
+      "throughput_mb_per_second": 12.08,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 50.0,
+      "payload_bytes": 52428800,
+      "elapsed_seconds": 4.118,
+      "throughput_mb_per_second": 12.14,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "100 Mbps Fast Office",
+      "payload_mb": 100.0,
+      "payload_bytes": 104857600,
+      "elapsed_seconds": 8.234,
+      "throughput_mb_per_second": 12.14,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "100.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 1.0,
+      "payload_bytes": 1048576,
+      "elapsed_seconds": 0.411,
+      "throughput_mb_per_second": 2.43,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 5.0,
+      "payload_bytes": 5242880,
+      "elapsed_seconds": 2.014,
+      "throughput_mb_per_second": 2.48,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 10.0,
+      "payload_bytes": 10485760,
+      "elapsed_seconds": 4.024,
+      "throughput_mb_per_second": 2.48,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 25.0,
+      "payload_bytes": 26214400,
+      "elapsed_seconds": 10.058,
+      "throughput_mb_per_second": 2.49,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 50.0,
+      "payload_bytes": 52428800,
+      "elapsed_seconds": 20.105,
+      "throughput_mb_per_second": 2.49,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "20 Mbps Remote Worker",
+      "payload_mb": 100.0,
+      "payload_bytes": 104857600,
+      "elapsed_seconds": 40.271,
+      "throughput_mb_per_second": 2.48,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "20.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 1.0,
+      "payload_bytes": 1048576,
+      "elapsed_seconds": 0.812,
+      "throughput_mb_per_second": 1.23,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 5.0,
+      "payload_bytes": 5242880,
+      "elapsed_seconds": 4.019,
+      "throughput_mb_per_second": 1.24,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 10.0,
+      "payload_bytes": 10485760,
+      "elapsed_seconds": 8.044,
+      "throughput_mb_per_second": 1.24,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 25.0,
+      "payload_bytes": 26214400,
+      "elapsed_seconds": 20.079,
+      "throughput_mb_per_second": 1.25,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 50.0,
+      "payload_bytes": 52428800,
+      "elapsed_seconds": 40.115,
+      "throughput_mb_per_second": 1.25,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    },
+    {
+      "scenario": "10 Mbps Cellular / Hotspot",
+      "payload_mb": 100.0,
+      "payload_bytes": 104857600,
+      "elapsed_seconds": 80.251,
+      "throughput_mb_per_second": 1.25,
+      "status_code": 200,
+      "success": true,
+      "network_condition": "10.0 Mbps Wire Rate"
+    }
+  ]
+}
