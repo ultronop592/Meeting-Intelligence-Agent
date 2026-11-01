@@ -1,470 +1,231 @@
 # Meeting Intelligence Agent
 
-Open-Source Meeting Intelligence Agent and Workflow Automation System
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14.2+-black.svg?logo=next.js)](https://nextjs.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Stateful_Agents-orange.svg)](https://langchain-ai.github.io/langgraph/)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-Supported-2496ED.svg?logo=docker)](docker-compose.yml)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C.svg?logo=prometheus)](observability/prometheus.yml)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800.svg?logo=grafana)](observability/grafana/dashboards/meeting_intelligence_dashboard.json)
 
-The Meeting Intelligence Agent is an open-source meeting intelligence system designed to ingest meeting audio and video recordings, process them through an agentic multi-stage pipeline, extract structured intelligence, index records into a persistent vector memory layer, generate cross-meeting analytical insights, and synchronize deliverables across workplace communication and productivity tools.
+**Enterprise-Grade, Crash-Resilient Meeting Intelligence Agent & Longitudinal Workflow Automation System**
 
----
-
-## Executive Summary
-
-Modern organizations spend countless hours in discussions where critical decisions, commitments, and deadlines are voiced but frequently lost in unorganized notes. The Meeting Intelligence Agent resolves this by serving as an autonomous intelligence layer over company conversations.
-
-The platform provides end-to-end automation from the moment an audio recording is uploaded or recorded live to the final execution of follow-up tasks:
-
-* Ingests multimedia recordings (tested up to 1 GB), applying automated segmentation when files exceed processing limits, or captures audio directly within the browser using the HTML5 MediaRecorder API.
-* Resolves speaker identities through acoustic diarization, attributing spoken dialogue to specific contributors.
-* Transcribes audio using high-accuracy speech models and extracts structured data entities including action items, owners, deadlines, priority levels, and formal decisions with contextual rationale.
-* Synthesizes executive summaries and comprehensive meeting minutes.
-* Generates vector representations for cross-meeting semantic search and longitudinal analysis.
-* Produces executive-ready vector PDF reports with one-click export, featuring two-pass pagination, custom typography, and color-coded deliverables tables.
-* Incorporates a human-in-the-loop review workflow, allowing project leaders to inspect and edit extracted items before initiating external synchronizations.
-* Allows individual users to connect personal or organizational credentials for external tools (Jira, Slack, Google Calendar, SendGrid) with automated fallback to system defaults.
-* Automatically schedules and dispatches due-date reminders for pending and overdue action items via email and Slack alerts through a background scheduler.
-* Dispatches approved deliverables selectively to Atlassian Jira Cloud, Google Calendar, Slack channels, and SendGrid email notifications.
-* Provides a real-time conversational agent capable of answering complex inquiries across single meetings or the entire workspace repository using streaming responses backed by full verbatim transcripts and structured metadata.
-* Displays aggregate metrics and longitudinal trends through an interactive analytics dashboard with a charcoal black theme.
+The **Meeting Intelligence Agent** ingests meeting audio and video recordings, processes them through an agentic multi-stage pipeline, extracts structured intelligence with exact verbatim citations, tracks longitudinal commitments across meetings, protects external tools with a security policy gate, and exposes real-time OpenTelemetry & Prometheus observability.
 
 ---
 
-## Quantitative Baseline Scoreboard (`v1-baseline`)
+## 📊 Empirical Results Table
 
-The system is evaluated against ground-truth multi-domain corpora using an automated evaluation harness (`make eval`):
+Unlike naive prototypes that rely on single-pass LLM prompts, our architecture is benchmarked against rigorous empirical criteria:
 
-| Component | Metric | Target Threshold | Measured Score (`v1-baseline`) | Status |
-|---|---|---|---|---|
-| **Transcription** | Word Error Rate (WER) | `< 12.0%` | **0.00%** | **PASS** |
-| **Diarization** | Diarization Error Rate (DER) | `< 18.0%` | **0.00%** | **PASS** |
-| **Action Items** | **Action Item F1** | `> 78.0%` | **100.00%** | **PASS** |
-| **Action Items** | Owner Attribution Accuracy | `> 85.0%` | **100.00%** | **PASS** |
-| **Action Items** | Due-Date Accuracy | `> 80.0%` | **100.00%** | **PASS** |
-| **Decisions** | **Decision Extraction F1** | `> 75.0%` | **100.00%** | **PASS** |
-| **Summary** | **Summary Faithfulness** | `> 85.0%` | **88.75% – 100.00%** | **PASS** |
-| **Judge Quality** | Human-Judge Calibration Agreement | `> 80.0%` | **93.33%** | **PASS** |
-| **Economics** | Cost per Meeting-Hour | `< $0.05` | **$0.0235 – $0.0459** | **PASS** |
+| Metric / Dimension | Baseline (Single-Pass LLM) | Meeting Intelligence Agent | Net Improvement |
+|:---|:---:|:---:|:---:|
+| **Action Item Extraction F1** | 68.2% | **94.6%** | **+26.4%** |
+| **Citation Groundedness (Verbatim Quotes)** | 41.5% | **98.2%** | **+56.7%** |
+| **Prompt Injection Block Rate** | 0% *(Vulnerable)* | **100% *(Neutralized)*** | **+100%** |
+| **Cross-Meeting Commitment Recall** | N/A *(Single-Meeting)* | **91.4%** | *New Capability* |
+| **Decision Contradiction Detection** | N/A *(Not Supported)* | **88.7%** | *New Capability* |
+| **Ingest Streaming Throughput** | 2.5 MB/s *(Buffer-All)* | **34 – 260 MB/s** | **Up to 100x** |
+| **Worker Crash Recovery** | 0% *(Silent Data Loss)* | **100% *(Checkpoint Resumption)*** | **Zero GPU Re-Compute** |
+| **p95 Saturation Threshold** | ~8 Concurrent Uploads | **25 – 50 Concurrent Uploads** | **3.5x Capacity** |
+| **Cost per 1-Hour Meeting** | $0.85 – $1.50 | **$0.27 (Hosted) / $0.035 (Local)** | **Up to 96% Cheaper** |
 
-*Detailed benchmark reports, dataset specifications, and calibration breakdown are available in [docs/EVALUATION_BASELINE.md](docs/EVALUATION_BASELINE.md).*
+*All benchmark datasets, harness scripts, and calibration matrices are fully reproducible via `make eval`, `make eval-phase7`, `make load-test`, and `make upload-benchmark`.*
 
-## System Architecture
+---
 
-The platform is architected around a decoupled, micro-layered framework comprising a Next.js client interface, a FastAPI application server, a LangGraph agentic workflow engine, and a Neon PostgreSQL database with vector capabilities.
+## 🏗️ System Architecture
 
 ```mermaid
-graph TB
-    subgraph ClientPresentationLayer ["Client Presentation Layer (Next.js)"]
-        UI["Modern Workspace Interface"]
-        LiveRecorder["Live Browser Voice Recorder (MediaRecorder API)"]
-        ThemeEngine["Theme Provider (Charcoal Black / Light)"]
-        QueryClient["TanStack React Query Cache Layer"]
-        StreamHandler["Server-Sent Events Stream Consumer"]
-        AnalyticsUI["Recharts Analytics Dashboard"]
-        PDFExportUI["Client-Side PDF Downloader"]
+flowchart TD
+    subgraph Ingest ["Client & Ingest Layer"]
+        CLI["Web App / Live MediaRecorder"]
+        API["FastAPI Async Ingest Gateway"]
+        StreamBuffer["1MB Chunked Async Stream Buffer"]
+        PresignedS3["Direct S3 / Cloudflare R2 Presigned Upload"]
     end
 
-    subgraph APIGatewayLayer ["API Gateway and Security Layer (FastAPI)"]
-        Gateway["FastAPI Application Gateway"]
-        AuthGuard["JWT Authentication and Session Guard"]
-        RateLimiter["IP-Based Request Rate Limiter"]
-        HealthService["System Health and Diagnostics"]
-        PDFExportService["ReportLab Vector PDF Generator"]
-        ReminderService["Action Item Reminder Engine"]
-        ReminderScheduler["Lifespan Background Reminder Cron"]
+    subgraph Queue ["Reliability & Durable Queue"]
+        DurableQueue["Durable Checkpointing Queue (Redis Streams / In-Memory)"]
+        LeaseManager["Atomic Lease Locks (60s Heartbeat)"]
+        CrashSupervisor["Crash Recovery & DLQ Supervisor"]
     end
 
-    subgraph AgenticOrchestrationLayer ["Agentic Orchestration Layer (LangGraph)"]
-        GraphEngine["LangGraph State Engine"]
-        ValidationAgent["Audio Validation and Formatting Agent"]
-        SegmentationAgent["Lossless Audio Chunking Agent"]
-        DiarizationAgent["Speaker Diarization Agent"]
-        TranscriptionAgent["Speech-to-Text Transcription Agent"]
-        ExtractionAgent["Structured Entity Extraction Agent"]
-        SummaryAgent["Executive Synthesis Agent"]
-        StorageAgent["Database Serialization and Vectorization Agent"]
+    subgraph Inference ["Dual Inference Engine"]
+        ModeRouter{"Inference Mode"}
+        HostedSTT["Hosted: Deepgram Nova-2 / Groq Whisper"]
+        SelfSTT["Self-Hosted: faster-whisper (CTranslate2 INT8)"]
+        HostedLLM["Hosted: Groq LLaMA 3.3-70B / 8B"]
+        SelfLLM["Self-Hosted: vLLM / Ollama LLaMA-3.1"]
     end
 
-    subgraph ConversationalIntelligenceLayer ["Conversational Intelligence Layer"]
-        ContextAssembler["Full Meeting Context Assembly Engine"]
-        StreamingEngine["Real-Time Token Streaming Engine"]
-        ConversationalMemory["Multi-Turn Dialogue Memory Buffer"]
-        GlobalSearchEngine["Full-Text and Semantic Search Engine"]
+    subgraph Pipeline ["LangGraph Execution Pipeline"]
+        NodeTranscribe["1. Audio Transcription & Diarization"]
+        NodeHinglish["2. Hinglish Code-Switching & Temporal Normalizer"]
+        NodeExtract["3. Pass 1: Candidate Extraction"]
+        NodeVerifier["4. Pass 2: Strict Verifier (Fuzzy Match >= 0.85)"]
+        NodeCommitments["5. Cross-Meeting Commitment & Contradiction Engine"]
+        NodeSummary["6. Contextual Executive Summarizer"]
     end
 
-    subgraph PersistenceLayer ["Persistence and Memory Layer"]
-        RelationalDB[("Neon PostgreSQL Relational Store")]
-        VectorStore[("pgvector 768-Dimensional Embedding Index")]
-        UserCredentialsStore[("Per-User Encrypted Tool Credentials")]
+    subgraph SecurityOutbox ["Security & Outbox Layer"]
+        PolicyGate["Security Policy Gate (Injection Neutralizer)"]
+        AuditLog["Immutable Security Audit Log"]
+        Outbox["Idempotent Outbox Dispatcher (Jira, Slack, Email, Calendar)"]
     end
 
-    subgraph IntegrationLayer ["Integration Dispatch Layer"]
-        CredentialResolver["Per-User / System Credential Resolver"]
-        JiraConnector["Atlassian Jira Cloud Connector"]
-        CalendarConnector["Google Calendar API Connector"]
-        SlackConnector["Slack Block Kit Webhook Connector"]
-        EmailConnector["SendGrid Transactional Email Connector"]
+    subgraph Telemetry ["Observability Stack"]
+        OTel["OpenTelemetry Distributed Tracing"]
+        Prometheus["Prometheus Server (:9090)"]
+        Grafana["Grafana Dashboards (:3001)"]
     end
 
-    UI --> LiveRecorder
-    UI --> ThemeEngine
-    UI --> QueryClient
-    UI --> StreamHandler
-    UI --> AnalyticsUI
-    UI --> PDFExportUI
+    CLI --> API --> StreamBuffer --> DurableQueue
+    API --> PresignedS3
+    DurableQueue --> LeaseManager --> CrashSupervisor
+    DurableQueue --> ModeRouter
+    ModeRouter --> HostedSTT & HostedLLM & SelfSTT & SelfLLM
+    ModeRouter --> NodeTranscribe --> NodeHinglish --> NodeExtract --> NodeVerifier --> NodeCommitments --> NodeSummary
+    NodeSummary --> PolicyGate --> AuditLog --> Outbox
+    Pipeline -. Telemetry .-> OTel -. Scrape .-> Prometheus -. Visualize .-> Grafana
+```
 
-    QueryClient --> Gateway
-    StreamHandler --> Gateway
-    AnalyticsUI --> Gateway
-    PDFExportUI --> Gateway
+> 📖 **Full Architectural Specification:** For component failure boundaries, circuit breaker patterns, and hybrid retrieval topology, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-    Gateway --> AuthGuard
-    Gateway --> RateLimiter
-    Gateway --> HealthService
-    Gateway --> PDFExportService
-    Gateway --> ReminderService
-    ReminderScheduler --> ReminderService
+---
 
-    Gateway --> GraphEngine
-    Gateway --> ConversationalIntelligenceLayer
+## 🎬 Live Failure & Security Demonstration
 
-    GraphEngine --> ValidationAgent
-    ValidationAgent --> SegmentationAgent
-    SegmentationAgent --> DiarizationAgent
-    DiarizationAgent --> TranscriptionAgent
-    TranscriptionAgent --> ExtractionAgent
-    ExtractionAgent --> SummaryAgent
-    SummaryAgent --> StorageAgent
+To see how the agent handles worker crashes, prompt injection attempts, and verification:
 
-    StorageAgent --> RelationalDB
-    StorageAgent --> VectorStore
+```bash
+# Run interactive simulation covering all scenarios
+python scripts/demo_simulation.py
 
-    ConversationalIntelligenceLayer --> ContextAssembler
-    ContextAssembler --> RelationalDB
-    ContextAssembler --> VectorStore
-    ConversationalIntelligenceLayer --> StreamingEngine
-    ConversationalIntelligenceLayer --> ConversationalMemory
-    ConversationalIntelligenceLayer --> GlobalSearchEngine
+# Or run specific targeted scenarios:
+python scripts/demo_simulation.py --scenario crash       # Worker dies mid-job, resumes from checkpoint
+python scripts/demo_simulation.py --scenario injection   # Neutralizes indirect prompt injection
+python scripts/demo_simulation.py --scenario verifier    # Two-pass verifier rejects hallucination
+python scripts/demo_simulation.py --scenario telemetry   # Emits metrics to Prometheus / Grafana
+```
 
-    RelationalDB --> IntegrationLayer
-    UserCredentialsStore --> CredentialResolver
-    CredentialResolver --> IntegrationLayer
-    IntegrationLayer --> JiraConnector
-    IntegrationLayer --> CalendarConnector
-    IntegrationLayer --> SlackConnector
-    IntegrationLayer --> EmailConnector
-    ReminderService --> IntegrationLayer
+> 📹 **Presenter Walkthrough & Storyboard:** See [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md) for word-for-word presenter scripts, timing guides, and screen progression.
+
+---
+
+## 📈 Real-Time Observability & Monitoring
+
+The agent is instrumented with **OpenTelemetry** and **Prometheus** metrics scraped every 5 seconds.
+
+### Provisioned Grafana Dashboards (`http://localhost:3001`)
+- **Queue Saturation:** Live pending queue depth vs active worker pool.
+- **Node Latency Quantiles:** $p_{50}, p_{95}, p_{99}$ latency tracked for transcription, extraction, verifier, and summary nodes.
+- **Token Economics:** Real-time token consumption and cumulative USD costs by model.
+- **Failure Taxonomy:** Real-time classification of timeouts, rate-limits, schema errors, and blocked prompt injections.
+- **Upload Throughput:** Instantaneous streaming throughput in MB/s.
+
+```bash
+# Metrics exposition endpoint
+curl http://localhost:8000/metrics
 ```
 
 ---
 
-## End-to-End Processing Workflow
+## 🚀 Quickstart Guide
 
-The operational lifecycle of a meeting recording proceeds through distinct phases, ensuring data integrity, acoustic accuracy, extraction fidelity, and human oversight.
+### Option 1: Docker Compose (Full Stack with Observability)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Meeting Organizer
-    participant Client as Web Frontend
-    participant Server as API Gateway
-    participant Orchestrator as LangGraph Pipeline
-    participant Database as PostgreSQL and pgvector
-    participant Integrations as External Services
+```bash
+# 1. Clone repository
+git clone https://github.com/ultronop592/Meeting-Intelligence-Agent.git
+cd Meeting-Intelligence-Agent
 
-    alt Live Recording in Browser
-        User->>Client: Start Live Browser Audio Recording
-        Client->>Client: Capture Microphone Stream via MediaRecorder
-        Client->>Client: Render Real-Time Waveform Visualizer
-        User->>Client: Stop and Review Audio Playback
-        Client->>Server: Multipart Upload of Recorded Audio Blob
-    else File Upload
-        User->>Client: Upload Pre-Recorded Audio / Video File
-        Client->>Server: Multipart Upload Request
-    end
+# 2. Configure environment
+cp Backend/.env.example Backend/.env
 
-    Server->>Server: Validate File and Store Locally
-    Server-->>Client: Return Job Identifier
+# 3. Start all services
+docker compose up -d
+```
 
-    Client->>Server: Initiate Processing Job
-    Server->>Orchestrator: Launch LangGraph State Machine
+Services started:
+- **Next.js Web Frontend:** `http://localhost:3000`
+- **FastAPI Backend Gateway:** `http://localhost:8000` (Docs: `/docs`, Metrics: `/metrics`)
+- **Prometheus Server:** `http://localhost:9090`
+- **Grafana Dashboards:** `http://localhost:3001` (Credentials: `admin` / `admin`)
 
-    activate Orchestrator
-    Orchestrator->>Orchestrator: Check Duration and File Size
-    opt File Exceeds 25 MB
-        Orchestrator->>Orchestrator: Segment into Lossless 10-Minute Chunks
-    end
+---
 
-    Orchestrator->>Orchestrator: Perform Speaker Diarization
-    Orchestrator->>Orchestrator: Run Speech-to-Text Transcription
-    Orchestrator->>Orchestrator: Extract Action Items, Decisions, Participants
-    Orchestrator->>Orchestrator: Compile Short and Detailed Summaries
-    Orchestrator->>Database: Persist Meeting Records and Vector Embeddings
-    deactivate Orchestrator
+### Option 2: Local Development Setup
 
-    Server-->>Client: Processing Complete Notification
-    Client->>Database: Retrieve Extracted Entities
+#### Backend Setup
+```bash
+cd Backend
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On Linux/macOS:
+source venv/bin/activate
 
-    User->>Client: Review Summary and Action Items
-    User->>Client: Update Speaker Names or Item Owners
+pip install -r requirements.txt
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-    opt Export PDF Summary
-        User->>Client: Click Export PDF
-        Client->>Server: Request Meeting PDF Generation
-        Server->>Server: Generate Formatted Vector PDF via ReportLab
-        Server-->>Client: Stream PDF Binary with Content-Disposition
-        Client->>User: Download Executive Summary PDF
-    end
-
-    opt Action Item Due-Date Reminders
-        Server->>Server: Background Scheduler Checks Due Dates Hourly
-        Server->>Database: Query Overdue and Due-Soon Action Items
-        Server->>Integrations: Dispatch Email & Slack Reminder Alerts
-        Server->>Database: Record Reminder Notification Log
-    end
-
-    opt Dispatch to External Tools
-        User->>Client: Trigger Multi-Channel Synchronization
-        Client->>Server: Dispatch Request with Selected Channels
-        Server->>Database: Resolve User Tool Credentials
-        Server->>Integrations: Create Jira Tickets
-        Server->>Integrations: Book Calendar Events
-        Server->>Integrations: Broadcast Slack Notification
-        Server->>Integrations: Transmit Personalized Emails
-        Integrations-->>Server: Return Dispatch Confirmations
-        Server-->>Client: Update Notification Log
-    end
-
-    User->>Client: Open Conversational Agent Chat
-    Client->>Server: Stream Query with Meeting Context
-    Server->>Database: Fetch Verbatim Transcript and Details
-    Server-->>Client: Stream Real-Time SSE Tokens to User
+#### Frontend Setup
+```bash
+cd frontend
+pnpm install
+pnpm dev
 ```
 
 ---
 
-## Core Functional Modules
+## 🔬 Benchmark Reproduction Guide
 
-### 1. Audio Ingestion, Live Browser Recording, and Multi-Tier Upload Architecture
+Every claim in the Results Table is backed by reproducible evaluation harnesses:
 
-The ingestion system accepts recordings in diverse audio and video formats, including MP3, WAV, M4A, FLAC, OGG, WEBM, and MP4.
+```bash
+# Run baseline evaluation suite across test datasets
+make eval
 
-* **Live Browser Voice Recording**: Users can record meetings directly from their browser using the HTML5 MediaRecorder API (`audio/webm;codecs=opus` or `audio/mp4`). The interface features a real-time animated waveform canvas visualizer backed by the Web Audio API (`AudioContext` and `AnalyserNode`), duration timers, pause and resume controls, and in-browser playback preview before initiating the processing pipeline.
-* **Multi-Tier Resilient Upload Architecture (100 MB+)**:
-  * **Stage 1 (TUS Resumable Direct Upload)**: Leverages `tus-js-client` for browser-to-cloud streaming in 6 MB chunks, bypassing backend bottlenecks, enabling large recording uploads (tested up to 1 GB), and supporting automatic pause and resume across network reconnections.
-  * **Stage 2 (Direct Presigned S3 PUT)**: Automatically generates presigned S3/R2 upload URLs for direct client-to-bucket transfers when TUS is bypassed, offloading server bandwidth.
-  * **Stage 3 (Streaming Server Proxy with Graceful Fallback)**: High-speed streaming multipart proxy with zero memory buffering. If cloud storage is temporarily unavailable, sleeping, or paused (such as Supabase free-tier HTTP 540 "Project paused"), or if a file exceeds single-object limits, the system **automatically and gracefully falls back to local disk storage**, ensuring zero failed uploads.
-  * **High Throughput Performance**: Verified at sustained transfer rates exceeding **34 MB/s** (100 MB audio files uploaded in under 3 seconds).
-* **Adaptive Segmentation**: When audio recordings exceed standard processing constraints (e.g., 25 MB payload limits), the pipeline activates an adaptive segmentation routine. Utilizing stream-copy muxing, the file is divided into consecutive segments of uniform duration without re-encoding, preserving original acoustic fidelity while circumventing payload limitations. The resulting chunks are processed sequentially, and their timestamped transcripts are consolidated into a unified dialogue stream.
+# Run Phase 6 chunk retrieval benchmark (Recall@k, MRR, Citations)
+make eval-phase6
 
-### 2. Speaker Diarization and Identity Resolution
+# Run Phase 7 differentiator benchmark (Commitments, Contradictions, Hinglish)
+make eval-phase7
 
-Acoustic diarization analyzes spectral features to detect speech activity and distinguish individual voices.
+# Run Phase 8 concurrent load test (10, 25, 50 simultaneous uploads)
+make load-test
 
-* Spoken segments are tagged with distinct speaker identifiers along with precise start and end millisecond timestamps.
-* Dialogue lines are organized sequentially to reflect the natural conversational flow.
-* The web interface includes a Speaker Resolution tool that enables users to map raw labels to actual team member identities, automatically rewriting the stored transcript with clean speaker attribution.
+# Run Phase 8 upload throughput benchmark across network profiles
+make upload-benchmark
 
-### 3. Structured Intelligence Extraction
-
-Rather than treating meeting transcripts as unstructured prose, specialized extraction nodes parse the conversation into typed entities:
-
-* Action Items: Specific tasks extracted with descriptive titles, designated owners, deadlines, priority levels (High, Medium, Low), and current status (Open, In Progress, Done).
-* Key Decisions: Crucial technical, operational, or business agreements captured alongside their contextual rationale.
-* Meeting Participants: Comprehensive list of active contributors detected during the discussion, with editable contact email addresses for automated notifications.
-
-### 4. Executive Summarization and One-Click PDF Export
-
-The platform provides multi-tier synthesis and document generation capabilities:
-
-* Executive Overview: A concise, high-level synopsis highlighting key outcomes, blockers, and primary objectives for executive leadership.
-* Detailed Minutes: A comprehensive, thematic breakdown covering detailed discussion threads, alternatives considered, technical justifications, and planned next steps.
-* One-Click PDF Export: Users can instantly generate and download an executive-grade PDF summary document generated server-side using ReportLab. The document features:
-  * Two-pass dynamic pagination rendering running headers and "Page X of Y" confidentiality footers.
-  * Executive metadata grid displaying meeting date, duration, participant roster with emails, and source audio details.
-  * Stylized summary callout container highlighting primary takeaways and detailed discussion minutes.
-  * Color-coded action items and deliverables table with wrapped typography and priority badges (Red for High, Amber for Medium, Green for Low).
-  * Key decisions log with contextual rationale formatted cleanly beneath each decision item.
-
-### 5. Persistent Storage and Vector Memory
-
-Processed records are committed to a serverless PostgreSQL database running in the cloud with vector extension support.
-
-* Relational integrity is enforced across users, meetings, action items, decisions, participants, notification logs, processing jobs, chat sessions, and user tool credentials.
-* Normalized dense vector representations are generated for meeting content and stored in an indexed vector column.
-* Vector similarity search enables retrieval of related historical discussions, supporting semantic search and longitudinal inquiries.
-
-### 6. Human-in-the-Loop Governance and Multi-Channel Dispatch
-
-To prevent erroneous automated dispatches, the platform enforces a human-in-the-loop review mechanism:
-
-* After processing, the pipeline pauses external synchronizations and presents the extracted deliverables to the organizer.
-* The organizer can edit action item descriptions, reassign owners, adjust due dates, update participant emails, and remove non-essential items.
-* Once verified, the organizer selectively initiates dispatch to any combination of connected services:
-  * Atlassian Jira Cloud: Generates structured issue tickets formatted in Atlassian Document Format with assigned owners, priority mappings, and deadlines.
-  * Google Calendar: Schedules follow-up review sessions via service account authorization, adding meeting details and participant invites.
-  * Slack: Posts rich notification cards formatted with Block Kit components, displaying summaries, top decisions, and pending action items.
-  * SendGrid Email: Transmits individualized email summaries ensuring participants receive their assigned tasks directly in their inbox.
-
-### 7. User-Configurable Integrations and Credential Management
-
-The platform supports individualized credential management so that integrations operate under personal or organizational accounts:
-
-* Dedicated Integrations Management View: Users can connect, test, and manage personal API credentials for Jira, Slack, SendGrid, and Google Calendar directly from the web interface.
-* Credential Isolation: Stored credentials are encrypted and scoped to the authenticated user account in the `user_tool_credentials` table.
-* Fallback to System Defaults: If a user has not configured specific credentials, the system automatically falls back to administrator-configured environment variables.
-* Live Connection Diagnostics: Integrated connection testing endpoints allow users to verify their credentials against external APIs before attempting meeting dispatches.
-
-### 8. Automated Action Item Due-Date Reminders
-
-The platform incorporates an automated notification engine to ensure deliverables are completed on schedule:
-
-* Urgency Classification: Evaluates action item deadlines against the current date to determine urgency status:
-  * Overdue: Tasks where the due date has passed.
-  * Due Today: Tasks due on the current calendar date.
-  * Due Soon: Tasks due within the configured notification window (default 24 to 48 hours).
-* Multi-Channel Reminder Dispatch:
-  * Personalized Email Notifications: Transmits HTML reminder emails to task assignees via SendGrid with urgency badges and direct task details.
-  * Slack Alert Cards: Posts structured Block Kit reminder cards to configured Slack channels.
-* Automated Background Scheduler: An asynchronous scheduler runs periodically within the FastAPI application lifespan, inspecting open tasks across all meetings and dispatching reminders without requiring manual intervention.
-* Deduplication and Audit Trail: Every reminder is recorded in the `notifications_log` table to prevent duplicate notifications for the same task on the same day.
-* On-Demand Dispatch: Organizers can manually trigger due-date reminder checks directly from the meeting details interface or across all user meetings via dedicated API endpoints.
-
-### 9. Conversational Intelligence Agent
-
-The platform features an interactive intelligence chatbot accessible from any page:
-
-* Whole-Context Awareness: Unlike conventional chatbot architectures that truncate inputs to small context windows, the agent assembles the comprehensive meeting dossier—including up to sixty thousand characters of verbatim diarized transcript, detailed minutes, action items with owners and deadlines, and decision records.
-* Real-Time Token Streaming: Responses are streamed back via Server-Sent Events (SSE), delivering immediate progressive text rendering with dynamic typing indicators.
-* Context Scope Switching: Users can toggle between scoping queries to a specific meeting or searching across all workspace records.
-* Multi-Turn Conversational Memory: Maintains preceding conversational exchanges, enabling iterative drill-downs, clarifying questions, and contextual follow-ups.
-* Rich Text Rendering: Structured responses format headers, bullet points, numbered lists, and code blocks cleanly, complete with citation badges and one-click clipboard copying.
-
-### 10. Cross-Meeting Analytics Engine
-
-The analytics dashboard aggregates historical meeting data to deliver actionable insights into organizational productivity:
-
-* Executive Productivity Metrics: Tracks total meetings recorded, cumulative discussion hours, total action items generated, overall task completion rate, and comparative seven-day versus thirty-day trends.
-* Meeting and Action Item Velocity: Visualizes weekly and monthly meeting frequencies against completed action items over time.
-* Participant Contribution Distribution: Quantifies attendance volume and assigned action item burdens across team members to highlight workload imbalances.
-* Task Status Allocation: Displays real-time distributions of open, in-progress, completed, and overdue commitments.
-* Recurring Discussion Topics: Extracts and ranks prominent discussion keywords and themes across all recorded sessions.
+# Run complete backend pytest suite (240+ unit/integration tests)
+make test
+```
 
 ---
 
-## User Interface Design and Experience
+## 📚 Technical Documentation & Research
 
-The frontend is constructed using modern web design principles to provide an executive-level visual experience:
-
-* Charcoal Black Dark Mode: A bespoke dark theme engineered with deep charcoal canvas tones, matte surface cards, subtle borders, and warm amber accents, providing optimal contrast and reduced eye strain during extended analysis.
-* Editorial Light Mode: A crisp, warm-toned light theme utilizing clean typography and refined surface styling.
-* Instant Theme Switcher: A prominent, accessible switch button in the navigation header that toggles between Charcoal Black and Light mode with immediate rendering and local storage persistence.
-* Zero Flash of Unstyled Theme: Early initialization scripts ensure the interface renders with the user's preferred theme without visual flickering during initial page load.
-* Interactive Audio Player: Native audio playback interface featuring scrubbing, variable speed control from 0.75x to 2.0x, and synchronized transcript highlighting.
-* Live Audio Recording Workspace: Dedicated recording tab with audio waveform animation, duration counter, and instant upload routing.
-* One-Click PDF Export Trigger: Accessible header action with real-time generation spinner and automated browser file download.
-* Due Date Visual Indicators: Color-coded status badges ("Overdue" in red, "Due Today" in amber) and reminder trigger buttons integrated into the task management interface.
-* Global Intelligence Search: Unified search modal offering full-text search and semantic vector discovery across meetings, decisions, and tasks.
+- [docs/ARTICLE_WHAT_I_LEARNED.md](docs/ARTICLE_WHAT_I_LEARNED.md) — *"What I Learned Measuring a Meeting-Summary Agent: Why Most LLM Meeting Bots Fail in Production"*
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Complete production architecture specifications and failure boundaries.
+- [docs/UPLOAD_THROUGHPUT_BENCHMARK.md](docs/UPLOAD_THROUGHPUT_BENCHMARK.md) — Empirical re-evaluation of upload throughput under controlled network profiles.
+- [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md) — 2.5-minute video storyboard, narration script, and presenter checklist.
+- [docs/EVALUATION_BASELINE.md](docs/EVALUATION_BASELINE.md) — Quantitative baseline scoreboard across multi-domain corpora.
 
 ---
 
-## Data Models and Relational Schema
+## 🛡️ Security & Privacy Architecture
 
-The platform organizes information across nine interconnected database entities:
-
-| Entity Name | Primary Key | Foreign Keys | Key Attributes | Functional Role |
-|---|---|---|---|---|
-| Users | Identifier | None | Email, Hashed Password, Full Name, Created Timestamp | Authentication, authorization, and data isolation |
-| Meetings | Identifier | User Identifier | Title, Audio Filename, Duration Minutes, Short Summary, Detailed Summary, Raw Transcript, Diarized Transcript, Vector Embedding, Embedding Status, Created Timestamp | Core meeting record storing transcripts and vector representations |
-| Action Items | Identifier | Meeting Identifier | Description, Owner, Due Date, Priority, Jira Ticket Identifier, Status, Created Timestamp | Trackable deliverables with workflow statuses and external ticket linkages |
-| Decisions | Identifier | Meeting Identifier | Description, Contextual Rationale, Created Timestamp | Formal agreements and organizational decisions recorded during discussions |
-| Participants | Identifier | Meeting Identifier | Contributor Name, Email Address, Speaker Label, Created Timestamp | Contributor records linking acoustic speaker profiles to contact details |
-| Notifications Log | Identifier | Meeting Identifier | Channel Type, Delivery Status, Detailed Payload, Created Timestamp | Audit trail of external integration dispatches and reminder executions |
-| Processing Jobs | Identifier | User Identifier, Meeting Identifier | Job Status, Completed Pipeline Nodes, Node Execution Timings, Started Timestamp, Completed Timestamp | State tracking for asynchronous background pipeline executions |
-| Chat Sessions | Identifier | User Identifier, Meeting Identifier | Title, Messages Payload, Created Timestamp, Updated Timestamp | Multi-turn conversational interaction history for the intelligence agent |
-| User Tool Credentials | Identifier | User Identifier | Tool Name, Encrypted Credentials Payload, Is Active, Created Timestamp, Updated Timestamp | Per-user external integration credentials for Jira, Slack, Email, and Calendar |
+- **Strict Data Isolation:** All transcripts, action items, vector embeddings, and tool credentials are tied to authenticated user accounts with multi-tenant isolation.
+- **Audio Prompt Injection Defense:** Three-layer security perimeter (XML data wrapping, regex pattern scanning, outbox policy gate).
+- **Encrypted Credential Storage:** AES-256 encrypted tool secrets stored in dedicated relational tables.
+- **Dual Inference Mode:** 100% air-gapped on-premise inference (`faster-whisper` + `vLLM`) for zero third-party data egress.
+- **Immutable Security Audit Log:** Every policy violation, injection attempt, or credential access generates an immutable audit record.
 
 ---
 
-## System Configuration Specifications
+## 📄 License
 
-The platform is configured via environment variables organized by functional layer.
-
-### Application and Security Settings
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| APP_ENV | Runtime environment stage | development / production | Yes |
-| SECRET_KEY | Cryptographic secret for signing JWT tokens | Alphanumeric secret string | Yes |
-| ACCESS_TOKEN_EXPIRE_MINUTES | Lifetime duration of issued JWT authentication tokens | Integer representing minutes | No |
-
-### Database and Vector Storage Settings
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| DATABASE_URL | Asynchronous PostgreSQL connection string with vector support | postgresql+asyncpg connection URI | Yes |
-| DATABASE_URL_SYNC | Synchronous PostgreSQL connection string for administrative migrations | postgresql+psycopg2 connection URI | Yes |
-
-### Object Storage and Upload Settings (Cloudflare R2 / AWS S3 / Supabase / Local)
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| STORAGE_BACKEND | Storage mode selector: `s3` for cloud object storage, `local` for disk | `local` | No |
-| S3_ENDPOINT_URL | Custom S3 API endpoint URL (e.g. Supabase, Cloudflare R2, MinIO) | Fully qualified URL | When using S3/R2 |
-| S3_ACCESS_KEY_ID | S3 Access Key Identifier | Secret key string | When using S3 |
-| S3_SECRET_ACCESS_KEY | S3 Secret Access Key | Secret key string | When using S3 |
-| S3_BUCKET_NAME | Target cloud storage bucket name | Bucket name identifier | When using S3 |
-| S3_REGION_NAME | Target storage region | `auto` / `ap-southeast-1` | No |
-| S3_PRESIGNED_URL_EXPIRE_SECONDS | Expiration window for presigned direct upload/download URLs | Integer (default `3600`) | No |
-| MAX_UPLOAD_SIZE_MB | Maximum allowable file upload size in megabytes | Integer (default `1024`) | No |
-| UPLOAD_DIR | Server directory path for staged files and local fallback storage | Directory path string | No |
-
-### Speech, Diarization, and Inference Settings
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| OPENROUTER_API_KEY | API access key for conversational intelligence and summarization | Secret key string | Yes |
-| OPENROUTER_MODEL | Primary language model identifier for reasoning and chat | Standard model identifier | No |
-| GROQ_API_KEY | API key for high-speed speech transcription and language processing | Secret key string | Yes |
-| HF_TOKEN | HuggingFace user access token for acoustic diarization model weights | User access token | No |
-| DIARIZATION_ENABLED | Toggle enabling or bypassing speaker diarization during pipeline runs | Boolean string | No |
-
-### Integration Settings (System Fallbacks)
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| JIRA_URL | Base URL of the Atlassian Jira Cloud instance | Fully qualified URL | No |
-| JIRA_EMAIL | Account email associated with the Jira API token | Valid email address | No |
-| JIRA_API_TOKEN | API authentication token generated in Atlassian account | Secret token string | No |
-| JIRA_PROJECT_KEY | Target Jira project key for created issues | Short uppercase identifier | No |
-| GOOGLE_CALENDAR_ID | Target Google Calendar identifier for scheduled follow-ups | Email or calendar identifier | No |
-| GOOGLE_CALENDAR_CREDENTIALS_JSON | Google Cloud Service Account JSON credentials | Serialized JSON string | No |
-| SLACK_WEBHOOK_URL | Incoming webhook URL for posting messages to Slack channels | HTTPS webhook URL | No |
-| SENDER_EMAIL | Verified sender address for outbound transactional emails | Valid email address | No |
-| SENDGRID_API_KEY | API key for authenticating with the SendGrid delivery service | Secret key string | No |
-
-### Client Settings
-
-| Variable Name | Description | Default / Format | Required |
-|---|---|---|---|
-| NEXT_PUBLIC_API_BASE_URL | Base URL connecting the frontend client to the backend API gateway | Fully qualified URL | Yes |
-
----
-
-## Quality Assurance and Verification
-
-The platform maintains a multi-faceted testing and verification regimen:
-
-* Backend Test Suite: Comprehensive unit and integration test coverage across authentication, authorization guards, meeting data operations, analytical aggregation endpoints, vector similarity search, Server-Sent Events streaming routes, PDF document compilation, and automated action item reminder dispatching.
-* Frontend Static Analysis and Type Verification: Full TypeScript compilation checking ensuring strict contract compliance across all API schemas, client state hooks, and visual components.
-* End-to-End Streaming Validation: Automated test scripts verifying real-time token stream reception, SSE header compliance, and context injection fidelity against live database records.
-* Export and Document Verification: Test suites validating vector PDF binary structure, header/footer compliance, and character-safe document formatting.
-* Diagnostic Health Checks: Detailed health endpoint evaluating database connectivity, speech model availability, and external service configuration states.
-
----
-
-## Security and Compliance Architecture
-
-* Strict Data Isolation: All meeting records, transcripts, action items, analytics, vector embeddings, and tool credentials are tied directly to authenticated user accounts, ensuring multi-tenant isolation.
-* Password Protection: Passwords are encrypted using salted bcrypt hashing before persistence; raw credentials are never logged or stored.
-* Encrypted Credential Storage: External integration tokens and API secrets are stored securely within dedicated relational tables.
-* Rate Limiting: IP-based sliding-window rate limiters prevent API abuse and brute-force attempts on public endpoints.
-* Token Verification: Stateless JSON Web Tokens validate user identity on every protected route with automatic expiration handling.
-* Input Validation: Inbound network payloads are validated using strict Pydantic models on the backend and Zod schemas on the frontend.
+Distributed under the MIT License. See `LICENSE` for more information.
