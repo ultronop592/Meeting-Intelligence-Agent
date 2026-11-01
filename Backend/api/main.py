@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from core.observability import get_prometheus_metrics
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -132,6 +133,12 @@ app.include_router(integrations_router)
 app.include_router(router)
 app.include_router(commitments_router)
 
+
+@app.get("/metrics", tags=["observability"])
+async def metrics():
+    """Prometheus exposition endpoint for scraping system, pipeline, and latency metrics."""
+    data, content_type = get_prometheus_metrics()
+    return Response(content=data, media_type=content_type)
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
