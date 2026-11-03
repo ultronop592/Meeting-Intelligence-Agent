@@ -99,3 +99,4 @@ def test_record_reminder_event():
     """Verify record_reminder_event records events cleanly."""
     record_reminder_event("slack", "success")
     record_reminder_event("jira", "policy_blocked")
+

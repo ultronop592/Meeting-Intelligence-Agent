@@ -187,3 +187,4 @@ The platform exposes real-time telemetry through **OpenTelemetry** and **Prometh
   - Real-time token consumption and cumulative USD cost tracking.
   - Failure taxonomy and prompt injection detection counters.
   - Audio upload streaming throughput ($MB/s$).
+

@@ -222,3 +222,4 @@ def get_prometheus_metrics() -> tuple[bytes, str]:
         content = b"# Prometheus client not installed\nmeeting_app_status 1\n"
         return content, "text/plain; version=0.0.4"
     return generate_latest(REGISTRY), CONTENT_TYPE_LATEST
+

@@ -11,3 +11,4 @@ scrape_configs:
         labels:
           service: "meeting-intelligence-api"
           environment: "production"
+
