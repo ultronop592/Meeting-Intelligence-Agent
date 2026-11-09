@@ -217,13 +217,13 @@ async def test_send_slack_and_email_idempotency(db_session):
         assert mock_post_slack.call_count == 1  # Webhook not called again!
 
     # --- Test Email Idempotency ---
+    # Patch resolve_email_credentials so the function sees valid creds even
+    # without SENDGRID_API_KEY in the CI environment, then also mock the
+    # actual send call so no real HTTP request is made.
     mock_send_email = MagicMock()
-    with patch("tools.email_tool._send_single_email", mock_send_email):
-        email_creds = {
-            "sendgrid_api_key": "SG.test12345",
-            "sendgrid_sender_email": "bot@company.com",
-            "sendgrid_sender_name": "Meeting Bot",
-        }
+    fake_creds = ("SG.test12345", "bot@company.com", "Meeting Bot")
+    with patch("tools.email_tool.resolve_email_credentials", return_value=fake_creds), \
+         patch("tools.email_tool._send_single_email", mock_send_email):
         recipients = {"Alice": "alice@example.com", "Bob": "bob@example.com"}
 
         res_e1 = await send_email_for_meeting(
@@ -232,7 +232,7 @@ async def test_send_slack_and_email_idempotency(db_session):
             short_summary="Reviewing scalable runtime.",
             all_action_items=[],
             participant_emails=recipients,
-            credentials=email_creds,
+            credentials=None,   # resolver is mocked; real creds not needed
             session=db_session,
         )
         assert res_e1["sent"] == 2
@@ -246,7 +246,7 @@ async def test_send_slack_and_email_idempotency(db_session):
             short_summary="Reviewing scalable runtime.",
             all_action_items=[],
             participant_emails=recipients,
-            credentials=email_creds,
+            credentials=None,   # resolver is mocked; real creds not needed
             session=db_session,
         )
         assert res_e2["sent"] == 0
