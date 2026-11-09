@@ -1,0 +1,74 @@
+name: CI — Test Suite
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run 244 Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    defaults:
+      run:
+        working-directory: Backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: Backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test suite
+        env:
+          GROQ_API_KEY: test-groq-key
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL_SYNC: sqlite:///:memory:
+          SECRET_KEY: ci-test-secret-key-32-chars-long!!
+          STORAGE_BACKEND: local
+        run: |
+          python -m pytest tests/ \
+            -q \
+            --tb=short \
+            --junitxml=pytest-report.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results-${{ matrix.python-version }}
+          path: Backend/pytest-report.xml
+          retention-days: 7
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff linter
+        run: ruff check Backend/ --ignore E501,E402
+        continue-on-error: true  # Lint warnings don't block PRs until baseline is established
