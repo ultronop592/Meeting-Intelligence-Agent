@@ -10,6 +10,9 @@
 Backend/.env
 frontend/.env.local
 
+# Explicitly track the example file (overrides *.env.* above)
+!.env.example
+
 # Google service account credentials (contains private key)
 credentials/
 google-credentials.json
