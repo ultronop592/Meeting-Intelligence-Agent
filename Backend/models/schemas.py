@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ENUMS
 
@@ -178,8 +178,7 @@ class AgentState(BaseModel):
     checkpoint_state:         Optional[dict[str, Any]] = Field(default=None, description="Persisted intermediate state for recovery.")
     resumed_from_checkpoint:  bool                     = Field(default=False, description="Flag indicating pipeline resumed from saved checkpoint.")
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
  
  
 # =============================================================================
@@ -211,8 +210,7 @@ class UserResponse(BaseModel):
     full_name:  Optional[str] = None
     created_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenResponse(BaseModel):
@@ -238,8 +236,7 @@ class MeetingRow(BaseModel):
     embedding_status: EmbeddingStatus     = EmbeddingStatus.PENDING
     created_at:       Optional[datetime]  = None
  
-    class Config:
-        from_attributes = True   # Allows building from SQLAlchemy ORM objects
+    model_config = ConfigDict(from_attributes=True)   # Allows building from SQLAlchemy ORM objects
  
  
 class ActionItemRow(BaseModel):
@@ -258,8 +255,7 @@ class ActionItemRow(BaseModel):
     owner_status:           str              = "stated"
     verification_reasoning: Optional[str]    = None
  
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
  
  
 class DecisionRow(BaseModel):
@@ -273,8 +269,7 @@ class DecisionRow(BaseModel):
     needs_review:           bool          = False
     verification_reasoning: Optional[str] = None
  
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
  
  
 class ParticipantRow(BaseModel):
@@ -283,8 +278,7 @@ class ParticipantRow(BaseModel):
     name:       str
     email:      Optional[str] = None
  
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
  
  
 class NotificationLogRow(BaseModel):
@@ -295,8 +289,7 @@ class NotificationLogRow(BaseModel):
     detail:     Optional[str]      = None
     created_at: Optional[datetime] = None
  
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OutboxDispatchRow(BaseModel):
@@ -313,8 +306,7 @@ class OutboxDispatchRow(BaseModel):
     created_at:      Optional[datetime]        = None
     updated_at:      Optional[datetime]        = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
  
  
 # =============================================================================
@@ -482,8 +474,7 @@ class ChatSessionListItem(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatSessionDetail(BaseModel):
@@ -494,8 +485,7 @@ class ChatSessionDetail(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateChatSessionRequest(BaseModel):

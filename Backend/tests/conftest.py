@@ -6,7 +6,6 @@ Uses:
 - FastAPI TestClient (sync ASGI) for route tests
 - Monkeypatching of tool connectors to avoid real API calls
 """
-import asyncio
 import os
 import pytest
 import pytest_asyncio
@@ -27,16 +26,6 @@ from db.models import Base
 from api.main import app
 from db.database import get_db
 
-
-# =============================================================================
-# Event-loop fixture (module-scoped so all async tests share one loop)
-# =============================================================================
-
-@pytest.fixture(scope="module")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 # =============================================================================
