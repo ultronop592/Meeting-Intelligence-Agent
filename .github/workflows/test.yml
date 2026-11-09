@@ -40,6 +40,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run test suite
+        id: test_run
+        continue-on-error: true
         env:
           PYTHONPATH: .
           GROQ_API_KEY: "test-groq-key"
@@ -50,6 +52,29 @@ jobs:
         run: |
           python -m pytest tests/ --tb=short -ra --junitxml=pytest-report.xml
 
+      - name: Publish Test Summary
+        if: always()
+        run: |
+          python -c "
+          import xml.etree.ElementTree as ET, os
+          if os.path.exists('pytest-report.xml'):
+              tree = ET.parse('pytest-report.xml')
+              root = tree.getroot()
+              failures = []
+              for ts in root.iter('testsuite'):
+                  for tc in ts.iter('testcase'):
+                      for f in tc.iter('failure'):
+                          failures.append(f'{tc.attrib.get(\"classname\")}.{tc.attrib.get(\"name\")}: {f.attrib.get(\"message\", \"\")[:200]}')
+                      for e in tc.iter('error'):
+                          failures.append(f'ERROR: {tc.attrib.get(\"classname\")}.{tc.attrib.get(\"name\")}: {e.attrib.get(\"message\", \"\")[:200]}')
+              summary = f'### Test Results\n- Failures: {len(failures)}\n'
+              if failures:
+                  summary += '#### Failed Tests:\n' + '\n'.join(f'- {f}' for f in failures[:20])
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+                  f.write(summary)
+              print(summary)
+          "
+
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
@@ -57,6 +82,10 @@ jobs:
           name: pytest-results-${{ matrix.python-version }}
           path: Backend/pytest-report.xml
           retention-days: 7
+
+      - name: Check test suite outcome
+        if: steps.test_run.outcome == 'failure'
+        run: exit 1
 
   lint:
     name: Lint (ruff)
