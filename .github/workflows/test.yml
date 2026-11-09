@@ -1,6 +1,6 @@
-name: CI — Test Suite
+name: CI Test Suite
 
-on:
+'on':
   push:
     branches: [ "main", "dev" ]
   pull_request:
@@ -29,21 +29,25 @@ jobs:
           cache: "pip"
           cache-dependency-path: Backend/requirements.txt
 
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run test suite
         env:
-          GROQ_API_KEY: test-groq-key
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          DATABASE_URL_SYNC: sqlite:///:memory:
-          SECRET_KEY: ci-test-secret-key-32-chars-long!!
-          STORAGE_BACKEND: local
+          GROQ_API_KEY: "test-groq-key"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          DATABASE_URL_SYNC: "sqlite:///:memory:"
+          SECRET_KEY: "ci-test-secret-key-32-chars-long-valid"
+          STORAGE_BACKEND: "local"
         run: |
-          python -m pytest tests/ \
-            -q \
-            --tb=short \
-            --junitxml=pytest-report.xml
+          python -m pytest tests/ -q --tb=short --junitxml=pytest-report.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -71,4 +75,5 @@ jobs:
 
       - name: Run ruff linter
         run: ruff check Backend/ --ignore E501,E402
-        continue-on-error: true  # Lint warnings don't block PRs until baseline is established
+        continue-on-error: true
+
