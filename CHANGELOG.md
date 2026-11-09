@@ -117,3 +117,4 @@ First public release. Covers all 9 development phases (15 weeks).
 
 [Unreleased]: https://github.com/ultronop592/Meeting-Intelligence-Agent/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/ultronop592/Meeting-Intelligence-Agent/releases/tag/v1.0.0
+
