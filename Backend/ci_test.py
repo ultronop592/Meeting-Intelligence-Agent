@@ -36,9 +36,28 @@ def main():
             if failures:
                 print(f"\n==================== {len(failures)} FAILED TESTS ====================")
                 for cls, name, msg in failures:
+                    clean_msg = msg.replace("\r", "").replace("\n", " ")[:250]
+                    print(f"::error title={name}::{cls} - {clean_msg}")
                     print(f"FAILED: {cls} :: {name}\n  Reason: {msg}\n")
+                
+                summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+                if summary_file:
+                    try:
+                        with open(summary_file, "a", encoding="utf-8") as sf:
+                            sf.write(f"### ❌ {len(failures)} Tests Failed\n\n")
+                            for cls, name, msg in failures:
+                                sf.write(f"- **`{cls} :: {name}`**\n  ```\n  {msg[:400]}\n  ```\n")
+                    except Exception as se:
+                        print(f"Error writing step summary: {se}")
             else:
                 print("\n==================== ALL TESTS PASSED ====================")
+                summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+                if summary_file:
+                    try:
+                        with open(summary_file, "a", encoding="utf-8") as sf:
+                            sf.write("### ✅ All 244 Tests Passed!\n")
+                    except Exception:
+                        pass
         except Exception as exc:
             print(f"Error parsing junit xml: {exc}")
     
